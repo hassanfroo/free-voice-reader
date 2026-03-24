@@ -82,6 +82,26 @@ test("filters common boilerplate phrases from extracted text", () => {
   assert.match(result.text, /Lunch readers mostly want a fast way/);
 });
 
+test("filters documentation chrome before the actual explanation", () => {
+  const result = extract(`
+    <body>
+      <main>
+        <article>
+          <h1>SpeechSynthesis</h1>
+          <p>This feature is well established and works across many devices and browser versions.</p>
+          <p>Learn more. See full compatibility. Report feedback.</p>
+          <p>The SpeechSynthesis interface of the Web Speech API is the controller interface for the speech service.</p>
+          <p>You can use it to retrieve voices, start speech, and stop speech.</p>
+        </article>
+      </main>
+    </body>
+  `);
+
+  assert.doesNotMatch(result.text, /feature is well established/i);
+  assert.doesNotMatch(result.text, /See full compatibility/i);
+  assert.match(result.text, /retrieve voices, start speech, and stop speech/i);
+});
+
 test("chooses the stronger extraction when a retry finds more content", () => {
   const first = { text: "Short paragraph only.", bestScore: 250 };
   const second = {

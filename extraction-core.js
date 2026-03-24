@@ -59,7 +59,7 @@
 
   const POSITIVE_HINT_RE = /\b(article|body|content|entry|main|page|post|story|text)\b/i;
   const NEGATIVE_HINT_RE = /\b(ad|alert|author|banner|comment|cookie|footer|header|hero|menu|meta|modal|nav|newsletter|promo|recommend|related|share|sidebar|social|subscribe|tag|toolbar)\b/i;
-  const BOILERPLATE_LINE_RE = /\b(accept|agree|allow all|all rights reserved|cookie|copyright|create account|follow us|log in|menu|newsletter|next article|open in app|privacy policy|related stories|share this|sign up|skip to content|sponsored|subscribe|terms of use|trending)\b/i;
+  const BOILERPLATE_LINE_RE = /\b(accept|agree|allow all|all rights reserved|cookie|copyright|create account|feature is well established|follow us|learn more|log in|menu|newsletter|next article|open in app|privacy policy|related stories|report feedback|see full compatibility|share this|sign up|skip to content|sponsored|subscribe|terms of use|trending)\b/i;
   const CANDIDATE_SELECTOR = "article, main, section, div";
   const BLOCK_SELECTOR = "h1, h2, h3, h4, p, li, blockquote, pre";
 
