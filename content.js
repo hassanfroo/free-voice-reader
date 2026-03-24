@@ -26,7 +26,9 @@ let overlayPlayButton = null;
 let overlayBackButton = null;
 let overlayNextButton = null;
 let overlayStopButton = null;
+let overlayExpandButton = null;
 let activeHighlightedElement = null;
+let overlayPinnedOpen = false;
 
 const DEFAULT_SETTINGS = {
   voiceName: "auto",
@@ -463,7 +465,10 @@ function renderOverlayState() {
     return;
   }
 
+  overlayRoot.classList.toggle("fvr-open", overlayPinnedOpen);
   overlayPlayButton.textContent = getOverlayLabel();
+  overlayExpandButton.textContent = overlayPinnedOpen ? "x" : "+";
+  overlayExpandButton.title = overlayPinnedOpen ? "Collapse panel" : "Open full panel";
   overlayBackButton.disabled =
     currentPlayback.status === "idle" ||
     currentPlayback.blockIndex <= 1;
@@ -505,7 +510,7 @@ function injectOverlay() {
       }
       #free-voice-reader-overlay:hover .fvr-shell,
       #free-voice-reader-overlay.fvr-open .fvr-shell {
-        width: 176px;
+        width: 216px;
       }
       #free-voice-reader-overlay .fvr-main {
         display: grid;
@@ -534,12 +539,17 @@ function injectOverlay() {
         gap: 8px;
         padding: 0 10px;
       }
+      #free-voice-reader-overlay .fvr-actions {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+      }
       #free-voice-reader-overlay .fvr-status {
         font-size: 11px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        max-width: 70px;
+        max-width: 78px;
       }
       #free-voice-reader-overlay .fvr-icon {
         width: 28px;
@@ -566,7 +576,8 @@ function injectOverlay() {
         <button class="fvr-play" type="button">Read</button>
         <div class="fvr-panel">
           <span class="fvr-status">Ready</span>
-          <div>
+          <div class="fvr-actions">
+            <button class="fvr-icon fvr-expand" type="button" title="Open full panel">+</button>
             <button class="fvr-icon fvr-back" type="button" title="Previous paragraph"><<</button>
             <button class="fvr-icon fvr-next" type="button" title="Next paragraph">>></button>
             <button class="fvr-icon fvr-stop" type="button" title="Stop">[]</button>
@@ -579,16 +590,21 @@ function injectOverlay() {
   document.body.appendChild(overlayRoot);
   overlayStatus = overlayRoot.querySelector(".fvr-status");
   overlayPlayButton = overlayRoot.querySelector(".fvr-play");
+  overlayExpandButton = overlayRoot.querySelector(".fvr-expand");
   overlayBackButton = overlayRoot.querySelector(".fvr-back");
   overlayNextButton = overlayRoot.querySelector(".fvr-next");
   overlayStopButton = overlayRoot.querySelector(".fvr-stop");
 
   overlayRoot.addEventListener("mouseenter", () => {
-    overlayRoot.classList.add("fvr-open");
+    if (!overlayPinnedOpen) {
+      overlayRoot.classList.add("fvr-open");
+    }
   });
 
   overlayRoot.addEventListener("mouseleave", () => {
-    overlayRoot.classList.remove("fvr-open");
+    if (!overlayPinnedOpen) {
+      overlayRoot.classList.remove("fvr-open");
+    }
   });
 
   overlayPlayButton.addEventListener("click", async () => {
@@ -605,6 +621,11 @@ function injectOverlay() {
 
   overlayBackButton.addEventListener("click", () => {
     skipBackward();
+  });
+
+  overlayExpandButton.addEventListener("click", () => {
+    overlayPinnedOpen = !overlayPinnedOpen;
+    renderOverlayState();
   });
 
   overlayNextButton.addEventListener("click", () => {
