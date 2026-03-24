@@ -42,7 +42,48 @@
     return chunks.length ? chunks : [normalizedText];
   }
 
+  function buildSpeechQueueFromBlocks(blocks, maxLength = 1800) {
+    const queue = [];
+
+    (blocks || []).forEach((block, blockIndex) => {
+      const text = normalizeWhitespace(block);
+      if (!text) {
+        return;
+      }
+
+      const chunks = splitTextIntoChunks(text, maxLength);
+      chunks.forEach((chunk, chunkIndex) => {
+        queue.push({
+          text: chunk,
+          blockIndex,
+          chunkIndex,
+          isBlockStart: chunkIndex === 0
+        });
+      });
+    });
+
+    return queue;
+  }
+
+  function getNextBlockQueueIndex(queue, currentQueueIndex) {
+    const currentItem = queue[currentQueueIndex];
+    if (!currentItem) {
+      return -1;
+    }
+
+    const currentBlockIndex = currentItem.blockIndex;
+    for (let index = currentQueueIndex + 1; index < queue.length; index += 1) {
+      if (queue[index].blockIndex > currentBlockIndex) {
+        return index;
+      }
+    }
+
+    return -1;
+  }
+
   return {
+    buildSpeechQueueFromBlocks,
+    getNextBlockQueueIndex,
     splitTextIntoChunks
   };
 });

@@ -1,7 +1,7 @@
 const STORAGE_KEY = "freeVoiceReaderSettings";
 
 const DEFAULT_SETTINGS = {
-  voiceName: "",
+  voiceName: "auto",
   rate: 1,
   pitch: 1,
   volume: 1
@@ -12,6 +12,7 @@ const rateInput = document.getElementById("rateInput");
 const rateValue = document.getElementById("rateValue");
 const readButton = document.getElementById("readButton");
 const readMainButton = document.getElementById("readMainButton");
+const nextButton = document.getElementById("nextButton");
 const stopButton = document.getElementById("stopButton");
 const refreshButton = document.getElementById("refreshButton");
 const status = document.getElementById("status");
@@ -19,6 +20,7 @@ const mainPreview = document.getElementById("mainPreview");
 const actionSummary = document.getElementById("actionSummary");
 const previewSourceLabel = document.getElementById("previewSourceLabel");
 const confidenceBadge = document.getElementById("confidenceBadge");
+const autoVoiceHint = document.getElementById("autoVoiceHint");
 const speedPresets = Array.from(document.querySelectorAll(".speed-pill"));
 
 let latestPreview = null;
@@ -99,6 +101,11 @@ async function sendTabMessage(type) {
 function renderVoices(voices, selectedVoiceName) {
   voiceSelect.innerHTML = "";
 
+  const autoOption = document.createElement("option");
+  autoOption.value = "auto";
+  autoOption.textContent = "Auto";
+  voiceSelect.appendChild(autoOption);
+
   voices.forEach((voice) => {
     const option = document.createElement("option");
     option.value = voice.name;
@@ -106,18 +113,17 @@ function renderVoices(voices, selectedVoiceName) {
     voiceSelect.appendChild(option);
   });
 
+  if (selectedVoiceName === "auto") {
+    voiceSelect.value = "auto";
+    return;
+  }
+
   if (selectedVoiceName && voices.some((voice) => voice.name === selectedVoiceName)) {
     voiceSelect.value = selectedVoiceName;
     return;
   }
 
-  if (voices.length) {
-    const preferredVoice =
-      voices.find((voice) => voice.default) ||
-      voices.find((voice) => voice.lang.startsWith("en")) ||
-      voices[0];
-    voiceSelect.value = preferredVoice.name;
-  }
+  voiceSelect.value = "auto";
 }
 
 function applyPreview(preview) {
@@ -130,6 +136,10 @@ function applyPreview(preview) {
   mainPreview.textContent =
     (mode.actionType === "READ_SELECTION" ? preview.selection : preview.mainContent) ||
     "No readable text detected.";
+  autoVoiceHint.textContent =
+    voiceSelect.value === "auto"
+      ? `Auto voice: ${preview.autoVoiceLabel || "Browser default"}`
+      : "Manual voice override is active.";
 }
 
 function formatPlaybackStatus(playback) {
@@ -137,8 +147,12 @@ function formatPlaybackStatus(playback) {
     return "";
   }
 
+  if (playback.status === "countdown") {
+    return `Starting in ${playback.countdownRemaining} seconds at ${Number(rateInput.value).toFixed(2)}x.`;
+  }
+
   const sourceLabel = playback.source === "selection" ? "selection" : "page";
-  return `Reading ${sourceLabel}: segment ${playback.chunkIndex} of ${playback.totalChunks}.`;
+  return `Reading ${sourceLabel}: paragraph ${playback.blockIndex} of ${playback.totalBlocks}.`;
 }
 
 async function refreshPreview() {
@@ -150,6 +164,7 @@ async function refreshPlaybackState() {
   try {
     const result = await sendTabMessage("GET_PLAYBACK_STATE");
     const playbackMessage = formatPlaybackStatus(result.playback);
+    nextButton.disabled = !result.playback || result.playback.status === "idle";
     if (playbackMessage) {
       setStatus(playbackMessage);
       return;
@@ -184,6 +199,7 @@ async function initialize() {
   try {
     await refreshPreview();
     startPlaybackPolling();
+    nextButton.disabled = true;
   } catch (error) {
     setStatus("Open a normal web page to use the reader.");
     mainPreview.textContent = "Unavailable on this page.";
@@ -209,7 +225,12 @@ rateInput.addEventListener("input", async () => {
   await saveSettings();
 });
 
-voiceSelect.addEventListener("change", saveSettings);
+voiceSelect.addEventListener("change", async () => {
+  await saveSettings();
+  if (latestPreview) {
+    applyPreview(latestPreview);
+  }
+});
 
 readButton.addEventListener("click", () => {
   const mode = FreeVoiceReaderUi.derivePageMode(
@@ -219,6 +240,7 @@ readButton.addEventListener("click", () => {
 });
 
 readMainButton.addEventListener("click", () => runAction("READ_MAIN_CONTENT"));
+nextButton.addEventListener("click", () => runAction("SKIP_FORWARD"));
 stopButton.addEventListener("click", () => runAction("STOP_READING"));
 refreshButton.addEventListener("click", async () => {
   setStatus("Refreshing preview...");

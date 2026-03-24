@@ -7,14 +7,26 @@ let currentPlayback = {
   source: null,
   textLength: 0,
   chunkIndex: 0,
-  totalChunks: 0
+  totalChunks: 0,
+  blockIndex: 0,
+  totalBlocks: 0,
+  countdownRemaining: 0,
+  voiceLabel: ""
 };
 let activeChunkUtterance = null;
-let activeChunkList = [];
+let activeQueue = [];
+let activeQueueIndex = -1;
 let activeChunkSettings = null;
+let activeSourceMeta = null;
+let activeCountdownTimer = null;
+let overlayRoot = null;
+let overlayStatus = null;
+let overlayPlayButton = null;
+let overlayNextButton = null;
+let overlayStopButton = null;
 
 const DEFAULT_SETTINGS = {
-  voiceName: "",
+  voiceName: "auto",
   rate: 1,
   pitch: 1,
   volume: 1
@@ -26,7 +38,7 @@ function loadVoices() {
   if (availableVoices.length && queuedSpeakRequest) {
     const pending = queuedSpeakRequest;
     queuedSpeakRequest = null;
-    speakText(pending.text, pending.settings, pending.source);
+    beginReading(pending.result, pending.settings, pending.source);
   }
 }
 
@@ -61,6 +73,14 @@ function getMainContentResult() {
   );
 }
 
+function buildSelectionResult(text) {
+  return {
+    text,
+    blocks: text ? [text] : [],
+    confidence: text ? "high" : "low"
+  };
+}
+
 function delay(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms);
@@ -93,54 +113,83 @@ async function resolveMainContentResult() {
 
 function stopSpeech() {
   speechSynthesis.cancel();
+  if (activeCountdownTimer) {
+    window.clearInterval(activeCountdownTimer);
+    activeCountdownTimer = null;
+  }
   activeChunkUtterance = null;
-  activeChunkList = [];
+  activeQueue = [];
+  activeQueueIndex = -1;
   activeChunkSettings = null;
+  activeSourceMeta = null;
   queuedSpeakRequest = null;
   currentPlayback = {
     status: "idle",
     source: null,
     textLength: 0,
     chunkIndex: 0,
-    totalChunks: 0
+    totalChunks: 0,
+    blockIndex: 0,
+    totalBlocks: 0,
+    countdownRemaining: 0,
+    voiceLabel: ""
   };
+  renderOverlayState();
 }
 
-function getSelectedVoice(settings) {
-  return availableVoices.find((voice) => voice.name === settings.voiceName) || null;
+function getSelectedVoice(settings, sourceMeta) {
+  if (settings.voiceName && settings.voiceName !== "auto") {
+    return availableVoices.find((voice) => voice.name === settings.voiceName) || null;
+  }
+
+  return FreeVoiceReaderVoice.chooseVoiceForLanguage(
+    availableVoices,
+    sourceMeta?.lang || document.documentElement.lang,
+    sourceMeta?.text || ""
+  );
 }
 
-function createUtterance(text, settings) {
+function createUtterance(text, settings, sourceMeta) {
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.rate = Number(settings.rate) || DEFAULT_SETTINGS.rate;
   utterance.pitch = Number(settings.pitch) || DEFAULT_SETTINGS.pitch;
   utterance.volume = Number(settings.volume) || DEFAULT_SETTINGS.volume;
 
-  const selectedVoice = getSelectedVoice(settings);
+  const selectedVoice = getSelectedVoice(settings, sourceMeta);
   if (selectedVoice) {
     utterance.voice = selectedVoice;
+    utterance.lang = selectedVoice.lang;
   }
 
   return utterance;
 }
 
-function speakNextChunk() {
-  if (!activeChunkList.length || !activeChunkSettings) {
+function updatePlaybackFromQueueItem(item) {
+  currentPlayback.chunkIndex = activeQueueIndex + 1;
+  currentPlayback.totalChunks = activeQueue.length;
+  currentPlayback.blockIndex = item.blockIndex + 1;
+  currentPlayback.totalBlocks = activeSourceMeta?.blocks?.length || 0;
+}
+
+function speakCurrentQueueItem() {
+  const item = activeQueue[activeQueueIndex];
+  if (!item || !activeChunkSettings) {
     stopSpeech();
     return;
   }
 
-  const text = activeChunkList.shift();
-  const utterance = createUtterance(text, activeChunkSettings);
+  const utterance = createUtterance(item.text, activeChunkSettings, activeSourceMeta);
   activeChunkUtterance = utterance;
-  currentPlayback.chunkIndex += 1;
   currentPlayback.status = "playing";
+  updatePlaybackFromQueueItem(item);
+  renderOverlayState();
 
   utterance.onend = () => {
     activeChunkUtterance = null;
 
-    if (activeChunkList.length) {
-      speakNextChunk();
+    if (activeQueueIndex + 1 < activeQueue.length) {
+      activeQueueIndex += 1;
+      speakCurrentQueueItem();
       return;
     }
 
@@ -149,7 +198,15 @@ function speakNextChunk() {
     currentPlayback.chunkIndex = 0;
     currentPlayback.totalChunks = 0;
     currentPlayback.textLength = 0;
+    currentPlayback.blockIndex = 0;
+    currentPlayback.totalBlocks = 0;
+    currentPlayback.countdownRemaining = 0;
+    currentPlayback.voiceLabel = "";
     activeChunkSettings = null;
+    activeSourceMeta = null;
+    activeQueue = [];
+    activeQueueIndex = -1;
+    renderOverlayState();
   };
 
   utterance.onerror = () => {
@@ -159,13 +216,58 @@ function speakNextChunk() {
   speechSynthesis.speak(utterance);
 }
 
-function speakText(text, settings, source) {
-  if (!text) {
+function startQueuePlayback(settings, source) {
+  if (!activeQueue.length || !activeSourceMeta) {
+    return { ok: false, message: "No readable text found on this page." };
+  }
+
+  const chosenVoice = getSelectedVoice(settings, activeSourceMeta);
+  currentPlayback.voiceLabel = chosenVoice
+    ? `${chosenVoice.name} (${chosenVoice.lang})`
+    : "Browser default";
+
+  if (Number(settings.rate) > 2) {
+    currentPlayback.status = "countdown";
+    currentPlayback.countdownRemaining = 3;
+    renderOverlayState();
+
+    activeCountdownTimer = window.setInterval(() => {
+      currentPlayback.countdownRemaining -= 1;
+
+      if (currentPlayback.countdownRemaining <= 0) {
+        window.clearInterval(activeCountdownTimer);
+        activeCountdownTimer = null;
+        currentPlayback.countdownRemaining = 0;
+        currentPlayback.status = "starting";
+        renderOverlayState();
+        speakCurrentQueueItem();
+        return;
+      }
+
+      renderOverlayState();
+    }, 1000);
+  } else {
+    currentPlayback.status = "starting";
+    renderOverlayState();
+    speakCurrentQueueItem();
+  }
+
+  const label = source === "selection" ? "selection" : "page";
+  const countdownMessage =
+    Number(settings.rate) > 2 ? " Starting in 3..." : "";
+  return {
+    ok: true,
+    message: `Reading ${label} (${currentPlayback.totalBlocks} blocks, ${currentPlayback.totalChunks} segment${currentPlayback.totalChunks === 1 ? "" : "s"}).${countdownMessage}`
+  };
+}
+
+function beginReading(result, settings, source) {
+  if (!result?.text) {
     return { ok: false, message: "No readable text found on this page." };
   }
 
   if (!availableVoices.length) {
-    queuedSpeakRequest = { text, settings, source };
+    queuedSpeakRequest = { result, settings, source };
     loadVoices();
     return {
       ok: true,
@@ -174,22 +276,219 @@ function speakText(text, settings, source) {
   }
 
   stopSpeech();
-  activeChunkList = FreeVoiceReaderSpeech.splitTextIntoChunks(text);
+  activeSourceMeta = {
+    text: result.text,
+    blocks: result.blocks?.length ? result.blocks : [result.text],
+    lang: result.lang || document.documentElement.lang || "",
+    source
+  };
+  activeQueue = FreeVoiceReaderSpeech.buildSpeechQueueFromBlocks(
+    activeSourceMeta.blocks
+  );
+  activeQueueIndex = 0;
   activeChunkSettings = settings;
   currentPlayback = {
-    status: "starting",
+    status: "queued",
     source,
-    textLength: text.length,
+    textLength: result.text.length,
     chunkIndex: 0,
-    totalChunks: activeChunkList.length
+    totalChunks: activeQueue.length,
+    blockIndex: 0,
+    totalBlocks: activeSourceMeta.blocks.length,
+    countdownRemaining: 0,
+    voiceLabel: ""
   };
-  speakNextChunk();
+  return startQueuePlayback(settings, source);
+}
 
-  const label = source === "selection" ? "selection" : "page";
+function skipForward() {
+  if (!activeQueue.length || activeQueueIndex < 0) {
+    return { ok: false, message: "Nothing is currently being read." };
+  }
+
+  const nextIndex = FreeVoiceReaderSpeech.getNextBlockQueueIndex(
+    activeQueue,
+    activeQueueIndex
+  );
+
+  if (nextIndex < 0) {
+    stopSpeech();
+    return { ok: true, message: "Reached the last paragraph." };
+  }
+
+  speechSynthesis.cancel();
+  activeChunkUtterance = null;
+  if (activeCountdownTimer) {
+    window.clearInterval(activeCountdownTimer);
+    activeCountdownTimer = null;
+  }
+
+  activeQueueIndex = nextIndex;
+  currentPlayback.countdownRemaining = 0;
+  currentPlayback.status = "starting";
+  renderOverlayState();
+  speakCurrentQueueItem();
+
   return {
     ok: true,
-    message: `Reading ${label} (${currentPlayback.totalChunks} segment${currentPlayback.totalChunks === 1 ? "" : "s"}).`
+    message: `Jumped to paragraph ${activeQueue[activeQueueIndex].blockIndex + 1}.`
   };
+}
+
+function getOverlayLabel() {
+  if (currentPlayback.status === "countdown") {
+    return `Starting in ${currentPlayback.countdownRemaining}`;
+  }
+
+  if (currentPlayback.status === "playing" || currentPlayback.status === "starting") {
+    return `P${currentPlayback.blockIndex}/${currentPlayback.totalBlocks}`;
+  }
+
+  return "Read";
+}
+
+function renderOverlayState() {
+  if (!overlayRoot) {
+    return;
+  }
+
+  overlayPlayButton.textContent = getOverlayLabel();
+  overlayNextButton.disabled =
+    currentPlayback.status === "idle" ||
+    currentPlayback.blockIndex >= currentPlayback.totalBlocks;
+  overlayStopButton.disabled = currentPlayback.status === "idle";
+  overlayStatus.textContent =
+    currentPlayback.voiceLabel ||
+    (currentPlayback.status === "idle" ? "Ready" : "Reading");
+}
+
+function injectOverlay() {
+  if (overlayRoot || !document.body) {
+    return;
+  }
+
+  overlayRoot = document.createElement("div");
+  overlayRoot.id = "free-voice-reader-overlay";
+  overlayRoot.innerHTML = `
+    <style>
+      #free-voice-reader-overlay {
+        position: fixed;
+        top: 14px;
+        right: 14px;
+        z-index: 2147483647;
+        font-family: Arial, sans-serif;
+        color: #2a221c;
+      }
+      #free-voice-reader-overlay .fvr-shell {
+        width: 42px;
+        min-height: 42px;
+        border-radius: 16px;
+        background: rgba(255, 249, 241, 0.96);
+        border: 1px solid rgba(98, 67, 48, 0.22);
+        box-shadow: 0 12px 28px rgba(59, 40, 26, 0.18);
+        overflow: hidden;
+        transition: width 120ms ease;
+      }
+      #free-voice-reader-overlay:hover .fvr-shell,
+      #free-voice-reader-overlay.fvr-open .fvr-shell {
+        width: 176px;
+      }
+      #free-voice-reader-overlay .fvr-main {
+        display: grid;
+        grid-template-columns: 42px 1fr;
+        align-items: center;
+      }
+      #free-voice-reader-overlay button {
+        border: 0;
+        background: transparent;
+        color: inherit;
+        cursor: pointer;
+        padding: 0;
+      }
+      #free-voice-reader-overlay .fvr-play {
+        width: 42px;
+        height: 42px;
+        background: #a64926;
+        color: white;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      #free-voice-reader-overlay .fvr-panel {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        padding: 0 10px;
+      }
+      #free-voice-reader-overlay .fvr-status {
+        font-size: 11px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 70px;
+      }
+      #free-voice-reader-overlay .fvr-icon {
+        width: 28px;
+        height: 28px;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+      #free-voice-reader-overlay .fvr-icon:disabled,
+      #free-voice-reader-overlay .fvr-play:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+    </style>
+    <div class="fvr-shell">
+      <div class="fvr-main">
+        <button class="fvr-play" type="button">Read</button>
+        <div class="fvr-panel">
+          <span class="fvr-status">Ready</span>
+          <div>
+            <button class="fvr-icon fvr-next" type="button" title="Next paragraph">≫</button>
+            <button class="fvr-icon fvr-stop" type="button" title="Stop">■</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(overlayRoot);
+  overlayStatus = overlayRoot.querySelector(".fvr-status");
+  overlayPlayButton = overlayRoot.querySelector(".fvr-play");
+  overlayNextButton = overlayRoot.querySelector(".fvr-next");
+  overlayStopButton = overlayRoot.querySelector(".fvr-stop");
+
+  overlayRoot.addEventListener("mouseenter", () => {
+    overlayRoot.classList.add("fvr-open");
+  });
+
+  overlayRoot.addEventListener("mouseleave", () => {
+    overlayRoot.classList.remove("fvr-open");
+  });
+
+  overlayPlayButton.addEventListener("click", async () => {
+    const settings = await getStoredSettings();
+    const selection = getSelectedText();
+    if (selection) {
+      beginReading(buildSelectionResult(selection), settings, "selection");
+      return;
+    }
+
+    const main = await resolveMainContentResult();
+    beginReading(main, settings, "main");
+  });
+
+  overlayNextButton.addEventListener("click", () => {
+    skipForward();
+  });
+
+  overlayStopButton.addEventListener("click", () => {
+    stopSpeech();
+  });
+
+  renderOverlayState();
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -216,13 +515,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return;
       }
 
-      sendResponse(speakText(text, settings, "selection"));
+      sendResponse(beginReading(buildSelectionResult(text), settings, "selection"));
       return;
     }
 
     if (message.type === "READ_MAIN_CONTENT") {
       const result = await resolveMainContentResult();
-      sendResponse(speakText(result.text, settings, "main"));
+      sendResponse(beginReading(result, settings, "main"));
       return;
     }
 
@@ -235,13 +534,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "PREVIEW_TEXT") {
       const selection = getSelectedText();
       const main = await resolveMainContentResult();
+      const autoVoice = FreeVoiceReaderVoice.chooseVoiceForLanguage(
+        availableVoices,
+        main.lang || document.documentElement.lang,
+        main.text
+      );
       sendResponse({
         ok: true,
         selection,
         selectionLength: selection.length,
         mainContent: main.text.slice(0, 600),
         mainConfidence: main.confidence,
-        playback: currentPlayback
+        playback: currentPlayback,
+        autoVoiceLabel: autoVoice
+          ? `${autoVoice.name} (${autoVoice.lang})`
+          : "Browser default"
       });
       return;
     }
@@ -251,8 +558,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         ok: true,
         playback: currentPlayback
       });
+      return;
+    }
+
+    if (message.type === "SKIP_FORWARD") {
+      sendResponse(skipForward());
+      return;
     }
   })();
 
   return true;
 });
+
+injectOverlay();

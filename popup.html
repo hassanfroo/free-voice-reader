@@ -25,6 +25,7 @@
         <label class="field">
           <span>Voice</span>
           <select id="voiceSelect"></select>
+          <small id="autoVoiceHint" class="field-hint">Auto-detecting page voice...</small>
         </label>
 
         <section class="field">
@@ -36,12 +37,16 @@
             <button type="button" class="speed-pill" data-rate="0.85">Relaxed</button>
             <button type="button" class="speed-pill" data-rate="1">Comfort</button>
             <button type="button" class="speed-pill" data-rate="1.25">Fast</button>
+            <button type="button" class="speed-pill" data-rate="2">2x</button>
+            <button type="button" class="speed-pill" data-rate="3">3x</button>
           </div>
-          <input id="rateInput" type="range" min="0.75" max="1.4" step="0.05" />
+          <input id="rateInput" type="range" min="0.75" max="3" step="0.05" />
+          <small class="field-hint">At speeds above 2x, playback starts with a short countdown.</small>
         </section>
 
         <div class="actions">
           <button id="readMainButton">Read Main Content</button>
+          <button id="nextButton">Next Paragraph</button>
           <button id="stopButton" class="ghost">Stop</button>
           <button id="refreshButton" class="ghost">Refresh Preview</button>
         </div>

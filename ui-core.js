@@ -11,6 +11,14 @@
       return "Relaxed";
     }
 
+    if (rate >= 2.35) {
+      return "Lightning";
+    }
+
+    if (rate >= 1.6) {
+      return "Very Fast";
+    }
+
     if (rate >= 1.25) {
       return "Fast";
     }
