@@ -19,11 +19,13 @@ let activeQueueIndex = -1;
 let activeChunkSettings = null;
 let activeSourceMeta = null;
 let activeCountdownTimer = null;
+let activeUtteranceToken = 0;
 let overlayRoot = null;
 let overlayStatus = null;
 let overlayPlayButton = null;
 let overlayNextButton = null;
 let overlayStopButton = null;
+let activeHighlightedElement = null;
 
 const DEFAULT_SETTINGS = {
   voiceName: "auto",
@@ -112,6 +114,7 @@ async function resolveMainContentResult() {
 }
 
 function stopSpeech() {
+  activeUtteranceToken += 1;
   speechSynthesis.cancel();
   if (activeCountdownTimer) {
     window.clearInterval(activeCountdownTimer);
@@ -134,6 +137,7 @@ function stopSpeech() {
     countdownRemaining: 0,
     voiceLabel: ""
   };
+  clearReadingMarker();
   renderOverlayState();
 }
 
@@ -169,6 +173,55 @@ function updatePlaybackFromQueueItem(item) {
   currentPlayback.totalChunks = activeQueue.length;
   currentPlayback.blockIndex = item.blockIndex + 1;
   currentPlayback.totalBlocks = activeSourceMeta?.blocks?.length || 0;
+  focusCurrentBlock(item.blockIndex);
+}
+
+function clearReadingMarker() {
+  if (!activeHighlightedElement) {
+    return;
+  }
+
+  activeHighlightedElement.classList.remove("fvr-reading-target");
+  activeHighlightedElement = null;
+}
+
+function findElementForBlockText(blockText) {
+  const normalizedBlock = normalizeWhitespace(blockText);
+  if (!normalizedBlock) {
+    return null;
+  }
+
+  const shortPrefix = normalizedBlock.slice(0, 80);
+  const candidates = Array.from(
+    document.querySelectorAll("article p, article li, article blockquote, article pre, article h1, article h2, article h3, article h4, main p, main li, main blockquote, main pre, main h1, main h2, main h3, main h4, p, li, blockquote, pre, h1, h2, h3, h4")
+  );
+
+  return (
+    candidates.find((element) => {
+      const text = normalizeWhitespace(element.innerText || "");
+      return text === normalizedBlock || text.includes(shortPrefix);
+    }) || null
+  );
+}
+
+function focusCurrentBlock(blockIndex) {
+  clearReadingMarker();
+  const blockText = activeSourceMeta?.blocks?.[blockIndex];
+  if (!blockText) {
+    return;
+  }
+
+  const element = findElementForBlockText(blockText);
+  if (!element) {
+    return;
+  }
+
+  activeHighlightedElement = element;
+  activeHighlightedElement.classList.add("fvr-reading-target");
+  activeHighlightedElement.scrollIntoView({
+    behavior: "smooth",
+    block: "center"
+  });
 }
 
 function speakCurrentQueueItem() {
@@ -179,12 +232,17 @@ function speakCurrentQueueItem() {
   }
 
   const utterance = createUtterance(item.text, activeChunkSettings, activeSourceMeta);
+  const utteranceToken = ++activeUtteranceToken;
   activeChunkUtterance = utterance;
   currentPlayback.status = "playing";
   updatePlaybackFromQueueItem(item);
   renderOverlayState();
 
   utterance.onend = () => {
+    if (utteranceToken !== activeUtteranceToken) {
+      return;
+    }
+
     activeChunkUtterance = null;
 
     if (activeQueueIndex + 1 < activeQueue.length) {
@@ -206,10 +264,15 @@ function speakCurrentQueueItem() {
     activeSourceMeta = null;
     activeQueue = [];
     activeQueueIndex = -1;
+    clearReadingMarker();
     renderOverlayState();
   };
 
   utterance.onerror = () => {
+    if (utteranceToken !== activeUtteranceToken) {
+      return;
+    }
+
     stopSpeech();
   };
 
@@ -316,6 +379,7 @@ function skipForward() {
     return { ok: true, message: "Reached the last paragraph." };
   }
 
+  activeUtteranceToken += 1;
   speechSynthesis.cancel();
   activeChunkUtterance = null;
   if (activeCountdownTimer) {
@@ -439,6 +503,13 @@ function injectOverlay() {
         opacity: 0.45;
         cursor: default;
       }
+      .fvr-reading-target {
+        outline: 3px solid rgba(166, 73, 38, 0.9) !important;
+        background: rgba(255, 229, 214, 0.72) !important;
+        border-radius: 6px;
+        box-shadow: 0 0 0 6px rgba(166, 73, 38, 0.14);
+        transition: background 160ms ease, box-shadow 160ms ease;
+      }
     </style>
     <div class="fvr-shell">
       <div class="fvr-main">
@@ -446,8 +517,8 @@ function injectOverlay() {
         <div class="fvr-panel">
           <span class="fvr-status">Ready</span>
           <div>
-            <button class="fvr-icon fvr-next" type="button" title="Next paragraph">≫</button>
-            <button class="fvr-icon fvr-stop" type="button" title="Stop">■</button>
+            <button class="fvr-icon fvr-next" type="button" title="Next paragraph">>></button>
+            <button class="fvr-icon fvr-stop" type="button" title="Stop">[]</button>
           </div>
         </div>
       </div>
