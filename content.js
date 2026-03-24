@@ -30,13 +30,17 @@ let overlayPauseButton = null;
 let overlayBackButton = null;
 let overlayNextButton = null;
 let overlayStopButton = null;
+let overlayDragButton = null;
 let overlayExpandButton = null;
+let overlayCloseButton = null;
 let overlayVoiceSelect = null;
 let overlaySpeedSelect = null;
 let overlayInlinePlayButton = null;
 let overlayInlinePauseButton = null;
 let activeHighlightedElement = null;
 let overlayPinnedOpen = false;
+let overlayDismissed = false;
+let overlayDragState = null;
 
 const DEFAULT_SETTINGS = {
   voiceName: "auto",
@@ -685,6 +689,11 @@ function renderOverlayState() {
     return;
   }
 
+  overlayRoot.style.display = overlayDismissed ? "none" : "block";
+  if (overlayDismissed) {
+    return;
+  }
+
   overlayRoot.classList.toggle("fvr-open", overlayPinnedOpen);
   overlayPlayButton.textContent = getOverlayLabel();
   overlayPlayButton.disabled = currentPlayback.status === "playing";
@@ -712,6 +721,51 @@ function renderOverlayState() {
         : `Reading P${currentPlayback.blockIndex}/${currentPlayback.totalBlocks}`;
 }
 
+function startOverlayDrag(event) {
+  if (!overlayRoot) {
+    return;
+  }
+
+  event.preventDefault();
+  const rect = overlayRoot.getBoundingClientRect();
+  overlayDragState = {
+    offsetX: event.clientX - rect.left,
+    offsetY: event.clientY - rect.top
+  };
+  overlayRoot.style.left = `${rect.left}px`;
+  overlayRoot.style.top = `${rect.top}px`;
+  overlayRoot.style.right = "auto";
+  overlayRoot.style.bottom = "auto";
+}
+
+function moveOverlay(event) {
+  if (!overlayRoot || !overlayDragState) {
+    return;
+  }
+
+  const shell = overlayRoot.querySelector(".fvr-shell");
+  const shellRect = shell?.getBoundingClientRect();
+  const shellWidth = shellRect?.width || 132;
+  const shellHeight = shellRect?.height || 42;
+  const maxLeft = Math.max(8, window.innerWidth - shellWidth - 8);
+  const maxTop = Math.max(8, window.innerHeight - shellHeight - 8);
+  const nextLeft = Math.min(
+    maxLeft,
+    Math.max(8, event.clientX - overlayDragState.offsetX)
+  );
+  const nextTop = Math.min(
+    maxTop,
+    Math.max(8, event.clientY - overlayDragState.offsetY)
+  );
+
+  overlayRoot.style.left = `${nextLeft}px`;
+  overlayRoot.style.top = `${nextTop}px`;
+}
+
+function stopOverlayDrag() {
+  overlayDragState = null;
+}
+
 function injectOverlay() {
   if (overlayRoot || !document.body) {
     return;
@@ -730,7 +784,7 @@ function injectOverlay() {
         color: #2a221c;
       }
       #free-voice-reader-overlay .fvr-shell {
-        width: 132px;
+        width: 204px;
         min-height: 42px;
         border-radius: 16px;
         background: rgba(255, 249, 241, 0.96);
@@ -755,7 +809,7 @@ function injectOverlay() {
       }
       #free-voice-reader-overlay .fvr-topbar {
         display: grid;
-        grid-template-columns: 42px 42px 48px;
+        grid-template-columns: 42px 42px 48px 48px 24px;
         align-items: center;
       }
       #free-voice-reader-overlay .fvr-play {
@@ -778,6 +832,21 @@ function injectOverlay() {
         height: 42px;
         font-size: 11px;
         font-weight: 700;
+      }
+      #free-voice-reader-overlay .fvr-drag {
+        height: 42px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: grab;
+      }
+      #free-voice-reader-overlay .fvr-drag:active {
+        cursor: grabbing;
+      }
+      #free-voice-reader-overlay .fvr-close {
+        width: 24px;
+        height: 42px;
+        font-size: 16px;
+        line-height: 1;
       }
       #free-voice-reader-overlay .fvr-panel {
         display: grid;
@@ -860,7 +929,9 @@ function injectOverlay() {
         <div class="fvr-topbar">
           <button class="fvr-play" type="button">Read</button>
           <button class="fvr-pause" type="button" title="Pause">Pause</button>
+          <button class="fvr-drag" type="button" title="Drag to move">Move</button>
           <button class="fvr-expand-main" type="button" title="Open full settings">Set</button>
+          <button class="fvr-close" type="button" title="Hide until reload">×</button>
         </div>
         <div class="fvr-panel">
           <span class="fvr-status">Ready</span>
@@ -888,7 +959,9 @@ function injectOverlay() {
   overlayStatus = overlayRoot.querySelector(".fvr-status");
   overlayPlayButton = overlayRoot.querySelector(".fvr-play");
   overlayPauseButton = overlayRoot.querySelector(".fvr-pause");
+  overlayDragButton = overlayRoot.querySelector(".fvr-drag");
   overlayExpandButton = overlayRoot.querySelector(".fvr-expand-main");
+  overlayCloseButton = overlayRoot.querySelector(".fvr-close");
   overlayBackButton = overlayRoot.querySelector(".fvr-back");
   overlayNextButton = overlayRoot.querySelector(".fvr-next");
   overlayStopButton = overlayRoot.querySelector(".fvr-stop");
@@ -908,6 +981,8 @@ function injectOverlay() {
       overlayRoot.classList.remove("fvr-open");
     }
   });
+  window.addEventListener("mousemove", moveOverlay);
+  window.addEventListener("mouseup", stopOverlayDrag);
 
   const handlePlay = async () => {
     if (currentPlayback.status === "paused") {
@@ -935,6 +1010,10 @@ function injectOverlay() {
 
   overlayPauseButton.addEventListener("click", handlePause);
   overlayInlinePauseButton.addEventListener("click", handlePause);
+  overlayDragButton.addEventListener("mousedown", startOverlayDrag);
+  overlayDragButton.addEventListener("click", (event) => {
+    event.preventDefault();
+  });
 
   overlayBackButton.addEventListener("click", () => {
     skipBackward();
@@ -952,6 +1031,11 @@ function injectOverlay() {
 
   overlayExpandButton.addEventListener("click", () => {
     overlayPinnedOpen = !overlayPinnedOpen;
+    renderOverlayState();
+  });
+
+  overlayCloseButton.addEventListener("click", () => {
+    overlayDismissed = true;
     renderOverlayState();
   });
 
