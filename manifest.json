@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "Free Voice Reader",
+  "description": "Read selected text or the main content of a page aloud using free built-in browser voices.",
+  "version": "0.1.0",
+  "permissions": [
+    "activeTab",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "action": {
+    "default_title": "Free Voice Reader",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ]
+}
