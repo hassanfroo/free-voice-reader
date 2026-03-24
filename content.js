@@ -28,6 +28,7 @@ let overlayNextButton = null;
 let overlayStopButton = null;
 let overlayExpandButton = null;
 let overlayVoiceSelect = null;
+let overlaySpeedSelect = null;
 let activeHighlightedElement = null;
 let overlayPinnedOpen = false;
 
@@ -144,7 +145,7 @@ function stopSpeech() {
     voiceLabel: ""
   };
   clearReadingMarker();
-  syncOverlayVoiceSelection();
+  syncOverlayControls();
   renderOverlayState();
 }
 
@@ -272,7 +273,7 @@ function focusCurrentBlock(blockIndex) {
   });
 }
 
-function saveOverlayVoiceSetting(value) {
+function saveOverlaySettings(patch) {
   return getStoredSettings().then(
     (settings) =>
       new Promise((resolve) => {
@@ -280,7 +281,7 @@ function saveOverlayVoiceSetting(value) {
           {
             [STORAGE_KEY]: {
               ...settings,
-              voiceName: value
+              ...patch
             }
           },
           resolve
@@ -289,16 +290,17 @@ function saveOverlayVoiceSetting(value) {
   );
 }
 
-function syncOverlayVoiceSelection() {
-  if (!overlayVoiceSelect) {
+function syncOverlayControls() {
+  if (!overlayVoiceSelect || !overlaySpeedSelect) {
     return;
   }
 
   getStoredSettings().then((settings) => {
-    if (!overlayVoiceSelect) {
+    if (!overlayVoiceSelect || !overlaySpeedSelect) {
       return;
     }
     overlayVoiceSelect.value = settings.voiceName || "auto";
+    overlaySpeedSelect.value = String(settings.rate || DEFAULT_SETTINGS.rate);
   });
 }
 
@@ -320,7 +322,23 @@ function renderOverlayVoices() {
     overlayVoiceSelect.appendChild(option);
   });
 
-  syncOverlayVoiceSelection();
+  syncOverlayControls();
+}
+
+function renderOverlaySpeeds() {
+  if (!overlaySpeedSelect) {
+    return;
+  }
+
+  overlaySpeedSelect.innerHTML = "";
+  [0.85, 1, 1.25, 1.5, 2, 2.5, 3].forEach((rate) => {
+    const option = document.createElement("option");
+    option.value = String(rate);
+    option.textContent = `${rate.toFixed(rate % 1 === 0 ? 0 : 2)}x`;
+    overlaySpeedSelect.appendChild(option);
+  });
+
+  syncOverlayControls();
 }
 
 function speakCurrentQueueItem() {
@@ -637,6 +655,12 @@ function injectOverlay() {
         gap: 6px;
         padding: 6px 10px;
       }
+      #free-voice-reader-overlay .fvr-settings {
+        display: grid;
+        grid-template-columns: 1fr 72px;
+        gap: 6px;
+        align-items: center;
+      }
       #free-voice-reader-overlay .fvr-actions {
         display: flex;
         align-items: center;
@@ -671,6 +695,15 @@ function injectOverlay() {
         font-size: 11px;
         color: #2a221c;
       }
+      #free-voice-reader-overlay .fvr-speed {
+        width: 100%;
+        border: 1px solid rgba(98, 67, 48, 0.2);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 4px 6px;
+        font-size: 11px;
+        color: #2a221c;
+      }
       .fvr-reading-target {
         outline: 3px solid rgba(166, 73, 38, 0.9) !important;
         background: rgba(255, 229, 214, 0.72) !important;
@@ -684,9 +717,12 @@ function injectOverlay() {
         <button class="fvr-play" type="button">Read</button>
         <div class="fvr-panel">
           <span class="fvr-status">Ready</span>
-          <select class="fvr-voice" title="Choose voice"></select>
+          <div class="fvr-settings">
+            <select class="fvr-voice" title="Choose voice"></select>
+            <select class="fvr-speed" title="Choose speed"></select>
+          </div>
           <div class="fvr-actions">
-            <button class="fvr-icon fvr-expand" type="button" title="Open full panel">+</button>
+            <button class="fvr-icon fvr-expand" type="button" title="Open full settings">+</button>
             <button class="fvr-icon fvr-back" type="button" title="Previous paragraph"><<</button>
             <button class="fvr-icon fvr-next" type="button" title="Next paragraph">>></button>
             <button class="fvr-icon fvr-stop" type="button" title="Stop">[]</button>
@@ -704,6 +740,7 @@ function injectOverlay() {
   overlayNextButton = overlayRoot.querySelector(".fvr-next");
   overlayStopButton = overlayRoot.querySelector(".fvr-stop");
   overlayVoiceSelect = overlayRoot.querySelector(".fvr-voice");
+  overlaySpeedSelect = overlayRoot.querySelector(".fvr-speed");
 
   overlayRoot.addEventListener("mouseenter", () => {
     if (!overlayPinnedOpen) {
@@ -734,7 +771,12 @@ function injectOverlay() {
   });
 
   overlayVoiceSelect.addEventListener("change", async () => {
-    await saveOverlayVoiceSetting(overlayVoiceSelect.value);
+    await saveOverlaySettings({ voiceName: overlayVoiceSelect.value });
+    renderOverlayState();
+  });
+
+  overlaySpeedSelect.addEventListener("change", async () => {
+    await saveOverlaySettings({ rate: Number(overlaySpeedSelect.value) });
     renderOverlayState();
   });
 
@@ -752,6 +794,7 @@ function injectOverlay() {
   });
 
   renderOverlayVoices();
+  renderOverlaySpeeds();
   renderOverlayState();
 }
 
