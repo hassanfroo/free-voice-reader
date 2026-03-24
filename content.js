@@ -584,8 +584,8 @@ function renderOverlayState() {
 
   overlayRoot.classList.toggle("fvr-open", overlayPinnedOpen);
   overlayPlayButton.textContent = getOverlayLabel();
-  overlayExpandButton.textContent = overlayPinnedOpen ? "x" : "+";
-  overlayExpandButton.title = overlayPinnedOpen ? "Collapse panel" : "Open full panel";
+  overlayExpandButton.textContent = overlayPinnedOpen ? "Close" : "Set";
+  overlayExpandButton.title = overlayPinnedOpen ? "Collapse settings" : "Open full settings";
   overlayBackButton.disabled =
     currentPlayback.status === "idle" ||
     currentPlayback.blockIndex <= 1;
@@ -627,7 +627,7 @@ function injectOverlay() {
       }
       #free-voice-reader-overlay:hover .fvr-shell,
       #free-voice-reader-overlay.fvr-open .fvr-shell {
-        width: 216px;
+        width: 272px;
       }
       #free-voice-reader-overlay .fvr-main {
         display: grid;
@@ -657,9 +657,18 @@ function injectOverlay() {
       }
       #free-voice-reader-overlay .fvr-settings {
         display: grid;
-        grid-template-columns: 1fr 72px;
+        grid-template-columns: 1fr 88px;
         gap: 6px;
         align-items: center;
+      }
+      #free-voice-reader-overlay .fvr-settings-labels {
+        display: grid;
+        grid-template-columns: 1fr 88px;
+        gap: 6px;
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: rgba(42, 34, 28, 0.74);
       }
       #free-voice-reader-overlay .fvr-actions {
         display: flex;
@@ -675,11 +684,12 @@ function injectOverlay() {
         max-width: 78px;
       }
       #free-voice-reader-overlay .fvr-icon {
-        width: 28px;
+        min-width: 34px;
         height: 28px;
         border-radius: 999px;
-        font-size: 12px;
+        font-size: 11px;
         font-weight: 700;
+        padding: 0 8px;
       }
       #free-voice-reader-overlay .fvr-icon:disabled,
       #free-voice-reader-overlay .fvr-play:disabled {
@@ -717,12 +727,16 @@ function injectOverlay() {
         <button class="fvr-play" type="button">Read</button>
         <div class="fvr-panel">
           <span class="fvr-status">Ready</span>
+          <div class="fvr-settings-labels">
+            <span>Voice</span>
+            <span>Speed</span>
+          </div>
           <div class="fvr-settings">
             <select class="fvr-voice" title="Choose voice"></select>
             <select class="fvr-speed" title="Choose speed"></select>
           </div>
           <div class="fvr-actions">
-            <button class="fvr-icon fvr-expand" type="button" title="Open full settings">+</button>
+            <button class="fvr-icon fvr-expand" type="button" title="Open full settings">Set</button>
             <button class="fvr-icon fvr-back" type="button" title="Previous paragraph"><<</button>
             <button class="fvr-icon fvr-next" type="button" title="Next paragraph">>></button>
             <button class="fvr-icon fvr-stop" type="button" title="Stop">[]</button>
