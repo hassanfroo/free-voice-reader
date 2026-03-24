@@ -20,6 +20,8 @@ let activeChunkSettings = null;
 let activeSourceMeta = null;
 let activeCountdownTimer = null;
 let activeUtteranceToken = 0;
+let activeChunkCharIndex = 0;
+let activeResumeCharIndex = 0;
 let overlayRoot = null;
 let overlayStatus = null;
 let overlayPlayButton = null;
@@ -135,6 +137,8 @@ function stopSpeech() {
   activeQueueIndex = -1;
   activeChunkSettings = null;
   activeSourceMeta = null;
+  activeChunkCharIndex = 0;
+  activeResumeCharIndex = 0;
   queuedSpeakRequest = null;
   currentPlayback = {
     status: "idle",
@@ -153,11 +157,13 @@ function stopSpeech() {
 }
 
 function pauseSpeech() {
-  if (currentPlayback.status !== "playing" || !activeChunkUtterance || speechSynthesis.paused) {
+  if (currentPlayback.status !== "playing" || !activeChunkUtterance) {
     return { ok: false, message: "Nothing is currently playing." };
   }
 
-  speechSynthesis.pause();
+  activeUtteranceToken += 1;
+  speechSynthesis.cancel();
+  activeChunkUtterance = null;
   currentPlayback.status = "paused";
   renderOverlayState();
   return {
@@ -167,19 +173,10 @@ function pauseSpeech() {
 }
 
 function resumeSpeech() {
-  if (currentPlayback.status === "paused" && speechSynthesis.paused) {
-    speechSynthesis.resume();
-    currentPlayback.status = "playing";
+  if (currentPlayback.status === "paused" && activeQueue.length && activeQueueIndex >= 0) {
+    currentPlayback.status = "starting";
     renderOverlayState();
-    return {
-      ok: true,
-      message: `Resumed at paragraph ${currentPlayback.blockIndex}.`
-    };
-  }
-
-  if (currentPlayback.status === "paused" && activeChunkUtterance) {
-    currentPlayback.status = "playing";
-    renderOverlayState();
+    speakCurrentQueueItem(activeChunkCharIndex);
     return {
       ok: true,
       message: `Resumed at paragraph ${currentPlayback.blockIndex}.`
@@ -381,19 +378,77 @@ function renderOverlaySpeeds() {
   syncOverlayControls();
 }
 
-function speakCurrentQueueItem() {
+function finishPlayback() {
+  currentPlayback.status = "idle";
+  currentPlayback.source = null;
+  currentPlayback.chunkIndex = 0;
+  currentPlayback.totalChunks = 0;
+  currentPlayback.textLength = 0;
+  currentPlayback.blockIndex = 0;
+  currentPlayback.totalBlocks = 0;
+  currentPlayback.countdownRemaining = 0;
+  currentPlayback.voiceLabel = "";
+  activeChunkSettings = null;
+  activeSourceMeta = null;
+  activeQueue = [];
+  activeQueueIndex = -1;
+  activeChunkCharIndex = 0;
+  activeResumeCharIndex = 0;
+  clearReadingMarker();
+  renderOverlayState();
+}
+
+function speakCurrentQueueItem(startCharIndex = 0) {
   const item = activeQueue[activeQueueIndex];
   if (!item || !activeChunkSettings) {
     stopSpeech();
     return;
   }
 
-  const utterance = createUtterance(item.text, activeChunkSettings, activeSourceMeta);
+  let speakOffset = Math.max(0, Math.min(startCharIndex, item.text.length));
+  while (speakOffset < item.text.length && /\s/.test(item.text.charAt(speakOffset))) {
+    speakOffset += 1;
+  }
+
+  if (speakOffset >= item.text.length) {
+    activeChunkUtterance = null;
+    if (activeQueueIndex + 1 < activeQueue.length) {
+      activeQueueIndex += 1;
+      activeChunkCharIndex = 0;
+      activeResumeCharIndex = 0;
+      speakCurrentQueueItem();
+      return;
+    }
+
+    finishPlayback();
+    return;
+  }
+
+  const utterance = createUtterance(
+    item.text.slice(speakOffset),
+    activeChunkSettings,
+    activeSourceMeta
+  );
   const utteranceToken = ++activeUtteranceToken;
   activeChunkUtterance = utterance;
+  activeResumeCharIndex = speakOffset;
+  activeChunkCharIndex = speakOffset;
   currentPlayback.status = "playing";
   updatePlaybackFromQueueItem(item);
   renderOverlayState();
+
+  utterance.onboundary = (event) => {
+    if (utteranceToken !== activeUtteranceToken) {
+      return;
+    }
+
+    if (typeof event.charIndex === "number") {
+      activeChunkCharIndex = Math.min(
+        item.text.length,
+        activeResumeCharIndex + event.charIndex
+      );
+    }
+  };
 
   utterance.onend = () => {
     if (utteranceToken !== activeUtteranceToken) {
@@ -401,6 +456,8 @@ function speakCurrentQueueItem() {
     }
 
     activeChunkUtterance = null;
+    activeChunkCharIndex = 0;
+    activeResumeCharIndex = 0;
 
     if (activeQueueIndex + 1 < activeQueue.length) {
       activeQueueIndex += 1;
@@ -408,21 +465,7 @@ function speakCurrentQueueItem() {
       return;
     }
 
-    currentPlayback.status = "idle";
-    currentPlayback.source = null;
-    currentPlayback.chunkIndex = 0;
-    currentPlayback.totalChunks = 0;
-    currentPlayback.textLength = 0;
-    currentPlayback.blockIndex = 0;
-    currentPlayback.totalBlocks = 0;
-    currentPlayback.countdownRemaining = 0;
-    currentPlayback.voiceLabel = "";
-    activeChunkSettings = null;
-    activeSourceMeta = null;
-    activeQueue = [];
-    activeQueueIndex = -1;
-    clearReadingMarker();
-    renderOverlayState();
+    finishPlayback();
   };
 
   utterance.onerror = () => {
