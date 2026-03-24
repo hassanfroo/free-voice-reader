@@ -9,34 +9,39 @@ const DEFAULT_SETTINGS = {
 
 const voiceSelect = document.getElementById("voiceSelect");
 const rateInput = document.getElementById("rateInput");
-const pitchInput = document.getElementById("pitchInput");
-const volumeInput = document.getElementById("volumeInput");
 const rateValue = document.getElementById("rateValue");
-const pitchValue = document.getElementById("pitchValue");
-const volumeValue = document.getElementById("volumeValue");
-const readSelectionButton = document.getElementById("readSelectionButton");
+const readButton = document.getElementById("readButton");
 const readMainButton = document.getElementById("readMainButton");
 const stopButton = document.getElementById("stopButton");
+const refreshButton = document.getElementById("refreshButton");
 const status = document.getElementById("status");
-const selectionPreview = document.getElementById("selectionPreview");
 const mainPreview = document.getElementById("mainPreview");
+const actionSummary = document.getElementById("actionSummary");
+const previewSourceLabel = document.getElementById("previewSourceLabel");
+const confidenceBadge = document.getElementById("confidenceBadge");
+const speedPresets = Array.from(document.querySelectorAll(".speed-pill"));
+
+let latestPreview = null;
+let playbackPollHandle = null;
 
 function setStatus(message) {
   status.textContent = message || "";
 }
 
 function updateSliderLabels() {
-  rateValue.textContent = Number(rateInput.value).toFixed(1);
-  pitchValue.textContent = Number(pitchInput.value).toFixed(1);
-  volumeValue.textContent = Number(volumeInput.value).toFixed(1);
+  const rate = Number(rateInput.value);
+  rateValue.textContent = `${FreeVoiceReaderUi.getSpeedLabel(rate)} (${rate.toFixed(2)}x)`;
+  speedPresets.forEach((button) => {
+    button.classList.toggle("active", Number(button.dataset.rate) === rate);
+  });
 }
 
 function getCurrentSettings() {
   return {
     voiceName: voiceSelect.value,
     rate: Number(rateInput.value),
-    pitch: Number(pitchInput.value),
-    volume: Number(volumeInput.value)
+    pitch: DEFAULT_SETTINGS.pitch,
+    volume: DEFAULT_SETTINGS.volume
   };
 }
 
@@ -103,7 +108,10 @@ function renderVoices(voices, selectedVoiceName) {
 
   if (selectedVoiceName && voices.some((voice) => voice.name === selectedVoiceName)) {
     voiceSelect.value = selectedVoiceName;
-  } else if (voices.length) {
+    return;
+  }
+
+  if (voices.length) {
     const preferredVoice =
       voices.find((voice) => voice.default) ||
       voices.find((voice) => voice.lang.startsWith("en")) ||
@@ -112,50 +120,124 @@ function renderVoices(voices, selectedVoiceName) {
   }
 }
 
+function applyPreview(preview) {
+  latestPreview = preview;
+  const mode = FreeVoiceReaderUi.derivePageMode(preview);
+  readButton.textContent = mode.actionLabel;
+  actionSummary.textContent = mode.helperText;
+  previewSourceLabel.textContent = mode.sourceLabel;
+  confidenceBadge.textContent = preview.mainConfidence || "unknown";
+  mainPreview.textContent =
+    (mode.actionType === "READ_SELECTION" ? preview.selection : preview.mainContent) ||
+    "No readable text detected.";
+}
+
+function formatPlaybackStatus(playback) {
+  if (!playback || playback.status === "idle") {
+    return "";
+  }
+
+  const sourceLabel = playback.source === "selection" ? "selection" : "page";
+  return `Reading ${sourceLabel}: segment ${playback.chunkIndex} of ${playback.totalChunks}.`;
+}
+
+async function refreshPreview() {
+  const preview = await sendTabMessage("PREVIEW_TEXT");
+  applyPreview(preview);
+}
+
+async function refreshPlaybackState() {
+  try {
+    const result = await sendTabMessage("GET_PLAYBACK_STATE");
+    const playbackMessage = formatPlaybackStatus(result.playback);
+    if (playbackMessage) {
+      setStatus(playbackMessage);
+      return;
+    }
+
+    if (status.textContent.startsWith("Reading ")) {
+      setStatus("");
+    }
+  } catch (error) {
+    // Ignore pages that cannot answer playback state.
+  }
+}
+
+function startPlaybackPolling() {
+  if (playbackPollHandle) {
+    window.clearInterval(playbackPollHandle);
+  }
+
+  playbackPollHandle = window.setInterval(() => {
+    refreshPlaybackState();
+  }, 1200);
+}
+
 async function initialize() {
   const [voices, settings] = await Promise.all([getVoices(), loadSettings()]);
 
   renderVoices(voices, settings.voiceName);
   rateInput.value = String(settings.rate);
-  pitchInput.value = String(settings.pitch);
-  volumeInput.value = String(settings.volume);
   updateSliderLabels();
   await saveSettings();
 
   try {
-    const preview = await sendTabMessage("PREVIEW_TEXT");
-    selectionPreview.textContent = preview.selection || "Nothing selected yet.";
-    mainPreview.textContent = preview.mainContent || "No main content detected.";
+    await refreshPreview();
+    startPlaybackPolling();
   } catch (error) {
     setStatus("Open a normal web page to use the reader.");
-    selectionPreview.textContent = "Unavailable on this page.";
     mainPreview.textContent = "Unavailable on this page.";
   }
 }
 
 async function runAction(type) {
-  setStatus("Working…");
+  setStatus("Working...");
   await saveSettings();
 
   try {
     const result = await sendTabMessage(type);
     setStatus(result?.message || "Done.");
+    await refreshPlaybackState();
+    await refreshPreview();
   } catch (error) {
     setStatus("This page does not allow reading actions.");
   }
 }
 
-[rateInput, pitchInput, volumeInput].forEach((input) => {
-  input.addEventListener("input", () => {
-    updateSliderLabels();
-    saveSettings();
-  });
+rateInput.addEventListener("input", async () => {
+  updateSliderLabels();
+  await saveSettings();
 });
 
 voiceSelect.addEventListener("change", saveSettings);
-readSelectionButton.addEventListener("click", () => runAction("READ_SELECTION"));
+
+readButton.addEventListener("click", () => {
+  const mode = FreeVoiceReaderUi.derivePageMode(
+    latestPreview || { selectionLength: 0, mainContent: "" }
+  );
+  runAction(mode.actionType);
+});
+
 readMainButton.addEventListener("click", () => runAction("READ_MAIN_CONTENT"));
 stopButton.addEventListener("click", () => runAction("STOP_READING"));
+refreshButton.addEventListener("click", async () => {
+  setStatus("Refreshing preview...");
+
+  try {
+    await refreshPreview();
+    setStatus("Preview refreshed.");
+  } catch (error) {
+    setStatus("Could not refresh this page.");
+  }
+});
+
+speedPresets.forEach((button) => {
+  button.addEventListener("click", async () => {
+    rateInput.value = button.dataset.rate;
+    updateSliderLabels();
+    await saveSettings();
+  });
+});
 
 initialize().catch(() => {
   setStatus("Unable to initialize the extension on this page.");

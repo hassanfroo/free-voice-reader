@@ -1,7 +1,7 @@
 :root {
   color-scheme: light;
   --bg: linear-gradient(180deg, #f4efe5 0%, #e6dccd 100%);
-  --panel: rgba(255, 252, 246, 0.92);
+  --panel: rgba(255, 252, 246, 0.94);
   --ink: #2a221c;
   --muted: #665b4f;
   --accent: #a64926;
@@ -60,12 +60,43 @@ h1 {
   margin-bottom: 16px;
 }
 
+.hero {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 14px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(166, 73, 38, 0.12), rgba(255, 255, 255, 0.65));
+  border: 1px solid var(--line);
+  margin-bottom: 16px;
+}
+
+.mini-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.action-summary {
+  font-size: 14px;
+  line-height: 1.4;
+}
+
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 14px;
   font-size: 13px;
+}
+
+.field-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .field span {
@@ -86,18 +117,19 @@ select {
   color: var(--ink);
 }
 
-.grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+.field strong {
+  color: var(--accent-strong);
 }
 
-.grid strong {
-  color: var(--accent-strong);
+.speed-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
 }
 
 .actions {
   display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin: 14px 0 18px;
 }
@@ -120,6 +152,18 @@ button.primary {
   color: #fff;
 }
 
+button.speed-pill {
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  padding: 10px 12px;
+}
+
+button.speed-pill.active {
+  background: var(--accent);
+  color: #fff;
+}
+
 button:not(.primary):not(.ghost) {
   background: #efe5d7;
   color: var(--ink);
@@ -136,9 +180,15 @@ button.ghost {
   padding-top: 14px;
 }
 
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
 .preview h2 {
   font-size: 16px;
-  margin-bottom: 10px;
 }
 
 .preview-block {
@@ -156,11 +206,21 @@ button.ghost {
 .preview-block p {
   font-size: 13px;
   line-height: 1.45;
-  max-height: 120px;
+  max-height: 160px;
   overflow: auto;
   padding: 10px;
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.7);
+}
+
+.confidence-badge {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent-strong);
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: rgba(166, 73, 38, 0.12);
 }
 
 .status {

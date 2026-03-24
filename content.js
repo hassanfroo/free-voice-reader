@@ -1,8 +1,17 @@
 const STORAGE_KEY = "freeVoiceReaderSettings";
 
-let currentUtterance = null;
 let availableVoices = [];
 let queuedSpeakRequest = null;
+let currentPlayback = {
+  status: "idle",
+  source: null,
+  textLength: 0,
+  chunkIndex: 0,
+  totalChunks: 0
+};
+let activeChunkUtterance = null;
+let activeChunkList = [];
+let activeChunkSettings = null;
 
 const DEFAULT_SETTINGS = {
   voiceName: "",
@@ -17,7 +26,7 @@ function loadVoices() {
   if (availableVoices.length && queuedSpeakRequest) {
     const pending = queuedSpeakRequest;
     queuedSpeakRequest = null;
-    speakText(pending.text, pending.settings);
+    speakText(pending.text, pending.settings, pending.source);
   }
 }
 
@@ -33,7 +42,7 @@ function getStoredSettings() {
 }
 
 function normalizeWhitespace(text) {
-  return text.replace(/\s+/g, " ").trim();
+  return FreeVoiceReaderExtractor.normalizeWhitespace(text);
 }
 
 function getSelectedText() {
@@ -45,131 +54,118 @@ function getSelectedText() {
   return normalizeWhitespace(selection.toString());
 }
 
-function isHidden(element) {
-  const style = window.getComputedStyle(element);
-  return (
-    style.display === "none" ||
-    style.visibility === "hidden" ||
-    style.opacity === "0"
+function getMainContentResult() {
+  return FreeVoiceReaderExtractor.extractMainContentFromDocument(
+    document,
+    window
   );
 }
 
-function removeNoisyNodes(root) {
-  const blockedSelectors = [
-    "nav",
-    "aside",
-    "footer",
-    "header",
-    "form",
-    "button",
-    "label",
-    "input",
-    "select",
-    "textarea",
-    "noscript",
-    "script",
-    "style",
-    "svg",
-    "canvas",
-    "figure",
-    "img",
-    "video",
-    "audio",
-    "iframe",
-    "[role='navigation']",
-    "[role='menu']",
-    "[role='complementary']",
-    "[aria-hidden='true']",
-    ".menu",
-    ".sidebar",
-    ".ad",
-    ".ads",
-    ".advertisement",
-    ".promo",
-    ".newsletter",
-    ".comments",
-    ".share",
-    ".social"
-  ];
-
-  root.querySelectorAll(blockedSelectors.join(",")).forEach((node) => {
-    node.remove();
-  });
-
-  root.querySelectorAll("*").forEach((node) => {
-    if (isHidden(node)) {
-      node.remove();
-    }
+function delay(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms);
   });
 }
 
-function scoreNode(node) {
-  const text = normalizeWhitespace(node.innerText || "");
-  if (!text) {
-    return 0;
+async function resolveMainContentResult() {
+  let bestResult = getMainContentResult();
+
+  if (bestResult.confidence === "high" && bestResult.text.length > 280) {
+    return bestResult;
   }
 
-  const textLength = text.length;
-  const paragraphCount = node.querySelectorAll("p").length;
-  const headingCount = node.querySelectorAll("h1, h2, h3").length;
-  const linkTextLength = Array.from(node.querySelectorAll("a"))
-    .map((link) => normalizeWhitespace(link.innerText || "").length)
-    .reduce((sum, length) => sum + length, 0);
-  const linkDensity = textLength ? linkTextLength / textLength : 1;
+  const retryDelays = [350, 1000];
+  for (const waitMs of retryDelays) {
+    await delay(waitMs);
+    const nextResult = getMainContentResult();
+    bestResult = FreeVoiceReaderExtractor.chooseBetterExtraction(
+      bestResult,
+      nextResult
+    );
 
-  let score = textLength;
-  score += paragraphCount * 120;
-  score += headingCount * 40;
-  score -= linkDensity * 600;
-
-  if (node.matches("main, article, [role='main'], .content, .post, .article")) {
-    score += 300;
-  }
-
-  return score;
-}
-
-function extractMainText() {
-  const clone = document.body.cloneNode(true);
-  removeNoisyNodes(clone);
-
-  const candidates = clone.querySelectorAll("article, main, section, div");
-  let bestNode = clone;
-  let bestScore = 0;
-
-  candidates.forEach((node) => {
-    const score = scoreNode(node);
-    if (score > bestScore) {
-      bestScore = score;
-      bestNode = node;
+    if (bestResult.confidence === "high" && bestResult.text.length > 280) {
+      break;
     }
-  });
-
-  const paragraphs = Array.from(bestNode.querySelectorAll("h1, h2, h3, p, li"))
-    .map((node) => normalizeWhitespace(node.innerText || ""))
-    .filter((text) => text.length > 30);
-
-  const combinedText = paragraphs.join(" ");
-  if (combinedText.length > 120) {
-    return combinedText;
   }
 
-  return normalizeWhitespace(bestNode.innerText || "");
+  return bestResult;
 }
 
 function stopSpeech() {
   speechSynthesis.cancel();
-  currentUtterance = null;
+  activeChunkUtterance = null;
+  activeChunkList = [];
+  activeChunkSettings = null;
   queuedSpeakRequest = null;
+  currentPlayback = {
+    status: "idle",
+    source: null,
+    textLength: 0,
+    chunkIndex: 0,
+    totalChunks: 0
+  };
 }
 
-function speakText(text, settings) {
+function getSelectedVoice(settings) {
+  return availableVoices.find((voice) => voice.name === settings.voiceName) || null;
+}
+
+function createUtterance(text, settings) {
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.rate = Number(settings.rate) || DEFAULT_SETTINGS.rate;
+  utterance.pitch = Number(settings.pitch) || DEFAULT_SETTINGS.pitch;
+  utterance.volume = Number(settings.volume) || DEFAULT_SETTINGS.volume;
+
+  const selectedVoice = getSelectedVoice(settings);
+  if (selectedVoice) {
+    utterance.voice = selectedVoice;
+  }
+
+  return utterance;
+}
+
+function speakNextChunk() {
+  if (!activeChunkList.length || !activeChunkSettings) {
+    stopSpeech();
+    return;
+  }
+
+  const text = activeChunkList.shift();
+  const utterance = createUtterance(text, activeChunkSettings);
+  activeChunkUtterance = utterance;
+  currentPlayback.chunkIndex += 1;
+  currentPlayback.status = "playing";
+
+  utterance.onend = () => {
+    activeChunkUtterance = null;
+
+    if (activeChunkList.length) {
+      speakNextChunk();
+      return;
+    }
+
+    currentPlayback.status = "idle";
+    currentPlayback.source = null;
+    currentPlayback.chunkIndex = 0;
+    currentPlayback.totalChunks = 0;
+    currentPlayback.textLength = 0;
+    activeChunkSettings = null;
+  };
+
+  utterance.onerror = () => {
+    stopSpeech();
+  };
+
+  speechSynthesis.speak(utterance);
+}
+
+function speakText(text, settings, source) {
   if (!text) {
     return { ok: false, message: "No readable text found on this page." };
   }
 
   if (!availableVoices.length) {
-    queuedSpeakRequest = { text, settings };
+    queuedSpeakRequest = { text, settings, source };
     loadVoices();
     return {
       ok: true,
@@ -178,32 +174,22 @@ function speakText(text, settings) {
   }
 
   stopSpeech();
-
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.rate = Number(settings.rate) || DEFAULT_SETTINGS.rate;
-  utterance.pitch = Number(settings.pitch) || DEFAULT_SETTINGS.pitch;
-  utterance.volume = Number(settings.volume) || DEFAULT_SETTINGS.volume;
-
-  const selectedVoice = availableVoices.find(
-    (voice) => voice.name === settings.voiceName
-  );
-
-  if (selectedVoice) {
-    utterance.voice = selectedVoice;
-  }
-
-  utterance.onend = () => {
-    currentUtterance = null;
+  activeChunkList = FreeVoiceReaderSpeech.splitTextIntoChunks(text);
+  activeChunkSettings = settings;
+  currentPlayback = {
+    status: "starting",
+    source,
+    textLength: text.length,
+    chunkIndex: 0,
+    totalChunks: activeChunkList.length
   };
+  speakNextChunk();
 
-  utterance.onerror = () => {
-    currentUtterance = null;
+  const label = source === "selection" ? "selection" : "page";
+  return {
+    ok: true,
+    message: `Reading ${label} (${currentPlayback.totalChunks} segment${currentPlayback.totalChunks === 1 ? "" : "s"}).`
   };
-
-  currentUtterance = utterance;
-  speechSynthesis.speak(utterance);
-
-  return { ok: true, message: "Reading started." };
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -222,13 +208,21 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "READ_SELECTION") {
       const text = getSelectedText();
-      sendResponse(speakText(text, settings));
+      if (!text) {
+        sendResponse({
+          ok: false,
+          message: "Select some text first, or use Read Main Content."
+        });
+        return;
+      }
+
+      sendResponse(speakText(text, settings, "selection"));
       return;
     }
 
     if (message.type === "READ_MAIN_CONTENT") {
-      const text = extractMainText();
-      sendResponse(speakText(text, settings));
+      const result = await resolveMainContentResult();
+      sendResponse(speakText(result.text, settings, "main"));
       return;
     }
 
@@ -240,10 +234,22 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "PREVIEW_TEXT") {
       const selection = getSelectedText();
+      const main = await resolveMainContentResult();
       sendResponse({
         ok: true,
         selection,
-        mainContent: extractMainText().slice(0, 600)
+        selectionLength: selection.length,
+        mainContent: main.text.slice(0, 600),
+        mainConfidence: main.confidence,
+        playback: currentPlayback
+      });
+      return;
+    }
+
+    if (message.type === "GET_PLAYBACK_STATE") {
+      sendResponse({
+        ok: true,
+        playback: currentPlayback
       });
     }
   })();
