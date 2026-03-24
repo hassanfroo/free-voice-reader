@@ -86,9 +86,33 @@
     return detectScriptLanguage(text);
   }
 
+  function isGoogleVoice(voice) {
+    return /\bgoogle\b/i.test(voice?.name || "");
+  }
+
   function chooseVoiceForLanguage(voices, preferredLang, text) {
     const detectedLang = detectLanguage(preferredLang, text);
     const normalizedVoices = voices || [];
+    const googleVoices = normalizedVoices.filter(isGoogleVoice);
+
+    const exactGoogleMatch = googleVoices.find(
+      (voice) => normalizeLangTag(voice.lang) === detectedLang && voice.default
+    );
+    if (exactGoogleMatch) {
+      return exactGoogleMatch;
+    }
+
+    const googleLangMatch = googleVoices.find(
+      (voice) => normalizeLangTag(voice.lang) === detectedLang
+    );
+    if (googleLangMatch) {
+      return googleLangMatch;
+    }
+
+    const defaultGoogleVoice = googleVoices.find((voice) => voice.default);
+    if (defaultGoogleVoice) {
+      return defaultGoogleVoice;
+    }
 
     const exactMatch = normalizedVoices.find(
       (voice) => normalizeLangTag(voice.lang) === detectedLang && voice.default
@@ -116,6 +140,7 @@
     chooseVoiceForLanguage,
     chooseDominantLanguage,
     detectLanguage,
+    isGoogleVoice,
     normalizeLangTag
   };
 });

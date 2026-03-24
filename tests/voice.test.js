@@ -9,14 +9,15 @@ const {
 test("prefers the declared page language when matching voices exist", () => {
   const voice = chooseVoiceForLanguage(
     [
-      { name: "English", lang: "en-US", default: true },
+      { name: "Google English", lang: "en-US", default: true },
+      { name: "Google Deutsch", lang: "de-DE", default: false },
       { name: "Deutsch", lang: "de-DE", default: false }
     ],
     "de-DE",
     "Das ist ein kurzer deutscher Beispielsatz."
   );
 
-  assert.equal(voice.name, "Deutsch");
+  assert.equal(voice.name, "Google Deutsch");
 });
 
 test("falls back to script detection when page language is missing", () => {
@@ -35,4 +36,18 @@ test("chooses the dominant weighted language from page hints", () => {
   );
 
   assert.equal(language, "de");
+});
+
+test("auto voice prefers Google voices over non-Google voices", () => {
+  const voice = chooseVoiceForLanguage(
+    [
+      { name: "Microsoft Katja", lang: "de-DE", default: true },
+      { name: "Google Deutsch", lang: "de-DE", default: false },
+      { name: "Google US English", lang: "en-US", default: false }
+    ],
+    "de-DE",
+    "Das ist ein deutscher Text."
+  );
+
+  assert.equal(voice.name, "Google Deutsch");
 });
