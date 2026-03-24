@@ -50,11 +50,12 @@ This version uses the browser's native `speechSynthesis` voices, which keeps the
 
 ## Shortcuts
 
-- `Ctrl+Shift+S`: read selected text
 - `Ctrl+Shift+P`: read the main page content
 - `Ctrl+Shift+N`: jump to the next paragraph
 - `Ctrl+Shift+B`: jump to the previous paragraph
 - `Ctrl+Shift+X`: stop reading
+
+Selected text is still available from the main button, the floating controls, and the right-click context menu.
 
 ## Notes
 

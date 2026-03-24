@@ -90,11 +90,6 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.commands.onCommand.addListener(async (command) => {
   const tab = await getActiveTab();
 
-  if (command === "read-selection") {
-    sendToTab(tab?.id, "READ_SELECTION");
-    return;
-  }
-
   if (command === "read-page") {
     sendToTab(tab?.id, "READ_MAIN_CONTENT");
     return;

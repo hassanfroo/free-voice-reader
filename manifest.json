@@ -29,13 +29,6 @@
     }
   },
   "commands": {
-    "read-selection": {
-      "suggested_key": {
-        "default": "Ctrl+Shift+S",
-        "mac": "Command+Shift+S"
-      },
-      "description": "Read selected text"
-    },
     "read-page": {
       "suggested_key": {
         "default": "Ctrl+Shift+P",
