@@ -10,6 +10,7 @@ Free Voice Reader is a Chrome extension that reads either selected text or the m
 - Lets users set reading speed all the way up to 3x
 - Adds a floating in-page control bubble in the top-right corner for quick access
 - Supports jumping to the next paragraph or headline while listening
+- Supports jumping back to the previous paragraph or headline while listening
 - Auto-scrolls to the current paragraph and highlights where reading is happening
 - Adds right-click actions and keyboard shortcuts for faster use
 - Works without API keys, paid services, or external voice providers
@@ -51,6 +52,7 @@ This version uses the browser's native `speechSynthesis` voices, which keeps the
 - `Ctrl+Shift+S`: read selected text
 - `Ctrl+Shift+P`: read the main page content
 - `Ctrl+Shift+N`: jump to the next paragraph
+- `Ctrl+Shift+B`: jump to the previous paragraph
 - `Ctrl+Shift+X`: stop reading
 
 ## Notes

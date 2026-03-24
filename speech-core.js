@@ -81,9 +81,29 @@
     return -1;
   }
 
+  function getPreviousBlockQueueIndex(queue, currentQueueIndex) {
+    const currentItem = queue[currentQueueIndex];
+    if (!currentItem) {
+      return -1;
+    }
+
+    const currentBlockIndex = currentItem.blockIndex;
+    for (let index = currentQueueIndex - 1; index >= 0; index -= 1) {
+      if (queue[index].blockIndex < currentBlockIndex) {
+        while (index > 0 && queue[index - 1].blockIndex === queue[index].blockIndex) {
+          index -= 1;
+        }
+        return index;
+      }
+    }
+
+    return -1;
+  }
+
   return {
     buildSpeechQueueFromBlocks,
     getNextBlockQueueIndex,
+    getPreviousBlockQueueIndex,
     splitTextIntoChunks
   };
 });

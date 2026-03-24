@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 const {
   buildSpeechQueueFromBlocks,
   getNextBlockQueueIndex,
+  getPreviousBlockQueueIndex,
   splitTextIntoChunks
 } = require("../speech-core.js");
 
@@ -49,4 +50,20 @@ test("finds the next paragraph boundary for fast forward", () => {
   const nextIndex = getNextBlockQueueIndex(queue, 0);
   assert.ok(nextIndex > 0);
   assert.equal(queue[nextIndex].blockIndex, 1);
+});
+
+test("finds the previous paragraph boundary for back navigation", () => {
+  const queue = buildSpeechQueueFromBlocks(
+    [
+      "First paragraph. ".repeat(10),
+      "Second paragraph. ".repeat(12),
+      "Third paragraph. ".repeat(8)
+    ],
+    80
+  );
+
+  const thirdBlockIndex = queue.findIndex((item) => item.blockIndex === 2);
+  const previousIndex = getPreviousBlockQueueIndex(queue, thirdBlockIndex);
+  assert.ok(previousIndex >= 0);
+  assert.equal(queue[previousIndex].blockIndex, 1);
 });

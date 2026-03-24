@@ -1,6 +1,7 @@
 const MENU_IDS = {
   readSelection: "free-voice-reader-read-selection",
   readPage: "free-voice-reader-read-page",
+  back: "free-voice-reader-back",
   next: "free-voice-reader-next",
   stop: "free-voice-reader-stop"
 };
@@ -25,6 +26,11 @@ function createContextMenus() {
     chrome.contextMenus.create({
       id: MENU_IDS.next,
       title: "Next paragraph",
+      contexts: ["page", "selection"]
+    });
+    chrome.contextMenus.create({
+      id: MENU_IDS.back,
+      title: "Previous paragraph",
       contexts: ["page", "selection"]
     });
   });
@@ -73,6 +79,11 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
   if (info.menuItemId === MENU_IDS.next) {
     sendToTab(tab?.id, "SKIP_FORWARD");
+    return;
+  }
+
+  if (info.menuItemId === MENU_IDS.back) {
+    sendToTab(tab?.id, "SKIP_BACKWARD");
   }
 });
 
@@ -96,5 +107,10 @@ chrome.commands.onCommand.addListener(async (command) => {
 
   if (command === "next-paragraph") {
     sendToTab(tab?.id, "SKIP_FORWARD");
+    return;
+  }
+
+  if (command === "previous-paragraph") {
+    sendToTab(tab?.id, "SKIP_BACKWARD");
   }
 });

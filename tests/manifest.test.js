@@ -9,4 +9,5 @@ test("manifest exposes background worker and commands", () => {
   assert.ok(manifest.commands["read-page"]);
   assert.ok(manifest.commands["stop-reading"]);
   assert.ok(manifest.commands["next-paragraph"]);
+  assert.ok(manifest.commands["previous-paragraph"]);
 });

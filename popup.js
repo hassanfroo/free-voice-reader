@@ -12,6 +12,7 @@ const rateInput = document.getElementById("rateInput");
 const rateValue = document.getElementById("rateValue");
 const readButton = document.getElementById("readButton");
 const readMainButton = document.getElementById("readMainButton");
+const backButton = document.getElementById("backButton");
 const nextButton = document.getElementById("nextButton");
 const stopButton = document.getElementById("stopButton");
 const refreshButton = document.getElementById("refreshButton");
@@ -164,6 +165,7 @@ async function refreshPlaybackState() {
   try {
     const result = await sendTabMessage("GET_PLAYBACK_STATE");
     const playbackMessage = formatPlaybackStatus(result.playback);
+    backButton.disabled = !result.playback || result.playback.status === "idle" || result.playback.blockIndex <= 1;
     nextButton.disabled = !result.playback || result.playback.status === "idle";
     if (playbackMessage) {
       setStatus(playbackMessage);
@@ -199,6 +201,7 @@ async function initialize() {
   try {
     await refreshPreview();
     startPlaybackPolling();
+    backButton.disabled = true;
     nextButton.disabled = true;
   } catch (error) {
     setStatus("Open a normal web page to use the reader.");
@@ -240,6 +243,7 @@ readButton.addEventListener("click", () => {
 });
 
 readMainButton.addEventListener("click", () => runAction("READ_MAIN_CONTENT"));
+backButton.addEventListener("click", () => runAction("SKIP_BACKWARD"));
 nextButton.addEventListener("click", () => runAction("SKIP_FORWARD"));
 stopButton.addEventListener("click", () => runAction("STOP_READING"));
 refreshButton.addEventListener("click", async () => {

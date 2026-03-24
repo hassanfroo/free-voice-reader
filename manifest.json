@@ -56,6 +56,13 @@
         "mac": "Command+Shift+N"
       },
       "description": "Jump to the next paragraph"
+    },
+    "previous-paragraph": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+B",
+        "mac": "Command+Shift+B"
+      },
+      "description": "Jump to the previous paragraph"
     }
   },
   "content_scripts": [

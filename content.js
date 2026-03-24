@@ -23,6 +23,7 @@ let activeUtteranceToken = 0;
 let overlayRoot = null;
 let overlayStatus = null;
 let overlayPlayButton = null;
+let overlayBackButton = null;
 let overlayNextButton = null;
 let overlayStopButton = null;
 let activeHighlightedElement = null;
@@ -399,6 +400,52 @@ function skipForward() {
   };
 }
 
+function skipBackward() {
+  if (!activeQueue.length || activeQueueIndex < 0) {
+    return { ok: false, message: "Nothing is currently being read." };
+  }
+
+  const previousIndex = FreeVoiceReaderSpeech.getPreviousBlockQueueIndex(
+    activeQueue,
+    activeQueueIndex
+  );
+
+  if (previousIndex < 0) {
+    activeUtteranceToken += 1;
+    speechSynthesis.cancel();
+    activeChunkUtterance = null;
+    if (activeCountdownTimer) {
+      window.clearInterval(activeCountdownTimer);
+      activeCountdownTimer = null;
+    }
+    activeQueueIndex = 0;
+    currentPlayback.countdownRemaining = 0;
+    currentPlayback.status = "starting";
+    renderOverlayState();
+    speakCurrentQueueItem();
+    return { ok: true, message: "Jumped to the first paragraph." };
+  }
+
+  activeUtteranceToken += 1;
+  speechSynthesis.cancel();
+  activeChunkUtterance = null;
+  if (activeCountdownTimer) {
+    window.clearInterval(activeCountdownTimer);
+    activeCountdownTimer = null;
+  }
+
+  activeQueueIndex = previousIndex;
+  currentPlayback.countdownRemaining = 0;
+  currentPlayback.status = "starting";
+  renderOverlayState();
+  speakCurrentQueueItem();
+
+  return {
+    ok: true,
+    message: `Jumped back to paragraph ${activeQueue[activeQueueIndex].blockIndex + 1}.`
+  };
+}
+
 function getOverlayLabel() {
   if (currentPlayback.status === "countdown") {
     return `Starting in ${currentPlayback.countdownRemaining}`;
@@ -417,6 +464,9 @@ function renderOverlayState() {
   }
 
   overlayPlayButton.textContent = getOverlayLabel();
+  overlayBackButton.disabled =
+    currentPlayback.status === "idle" ||
+    currentPlayback.blockIndex <= 1;
   overlayNextButton.disabled =
     currentPlayback.status === "idle" ||
     currentPlayback.blockIndex >= currentPlayback.totalBlocks;
@@ -517,6 +567,7 @@ function injectOverlay() {
         <div class="fvr-panel">
           <span class="fvr-status">Ready</span>
           <div>
+            <button class="fvr-icon fvr-back" type="button" title="Previous paragraph"><<</button>
             <button class="fvr-icon fvr-next" type="button" title="Next paragraph">>></button>
             <button class="fvr-icon fvr-stop" type="button" title="Stop">[]</button>
           </div>
@@ -528,6 +579,7 @@ function injectOverlay() {
   document.body.appendChild(overlayRoot);
   overlayStatus = overlayRoot.querySelector(".fvr-status");
   overlayPlayButton = overlayRoot.querySelector(".fvr-play");
+  overlayBackButton = overlayRoot.querySelector(".fvr-back");
   overlayNextButton = overlayRoot.querySelector(".fvr-next");
   overlayStopButton = overlayRoot.querySelector(".fvr-stop");
 
@@ -549,6 +601,10 @@ function injectOverlay() {
 
     const main = await resolveMainContentResult();
     beginReading(main, settings, "main");
+  });
+
+  overlayBackButton.addEventListener("click", () => {
+    skipBackward();
   });
 
   overlayNextButton.addEventListener("click", () => {
@@ -634,6 +690,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (message.type === "SKIP_FORWARD") {
       sendResponse(skipForward());
+      return;
+    }
+
+    if (message.type === "SKIP_BACKWARD") {
+      sendResponse(skipBackward());
       return;
     }
   })();
