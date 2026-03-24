@@ -23,18 +23,21 @@ let activeUtteranceToken = 0;
 let overlayRoot = null;
 let overlayStatus = null;
 let overlayPlayButton = null;
+let overlayPauseButton = null;
 let overlayBackButton = null;
 let overlayNextButton = null;
 let overlayStopButton = null;
 let overlayExpandButton = null;
 let overlayVoiceSelect = null;
 let overlaySpeedSelect = null;
+let overlayInlinePlayButton = null;
+let overlayInlinePauseButton = null;
 let activeHighlightedElement = null;
 let overlayPinnedOpen = false;
 
 const DEFAULT_SETTINGS = {
   voiceName: "auto",
-  rate: 1,
+  rate: 1.5,
   pitch: 1,
   volume: 1
 };
@@ -147,6 +150,43 @@ function stopSpeech() {
   clearReadingMarker();
   syncOverlayControls();
   renderOverlayState();
+}
+
+function pauseSpeech() {
+  if (currentPlayback.status !== "playing" || !activeChunkUtterance || speechSynthesis.paused) {
+    return { ok: false, message: "Nothing is currently playing." };
+  }
+
+  speechSynthesis.pause();
+  currentPlayback.status = "paused";
+  renderOverlayState();
+  return {
+    ok: true,
+    message: `Paused at paragraph ${currentPlayback.blockIndex}.`
+  };
+}
+
+function resumeSpeech() {
+  if (currentPlayback.status === "paused" && speechSynthesis.paused) {
+    speechSynthesis.resume();
+    currentPlayback.status = "playing";
+    renderOverlayState();
+    return {
+      ok: true,
+      message: `Resumed at paragraph ${currentPlayback.blockIndex}.`
+    };
+  }
+
+  if (currentPlayback.status === "paused" && activeChunkUtterance) {
+    currentPlayback.status = "playing";
+    renderOverlayState();
+    return {
+      ok: true,
+      message: `Resumed at paragraph ${currentPlayback.blockIndex}.`
+    };
+  }
+
+  return { ok: false, message: "Nothing is paused right now." };
 }
 
 function getSelectedVoice(settings, sourceMeta) {
@@ -542,12 +582,12 @@ function skipBackward() {
 }
 
 function getOverlayLabel() {
-  if (currentPlayback.status === "countdown") {
-    return `Starting in ${currentPlayback.countdownRemaining}`;
+  if (currentPlayback.status === "paused") {
+    return "Play";
   }
 
   if (currentPlayback.status === "playing" || currentPlayback.status === "starting") {
-    return `P${currentPlayback.blockIndex}/${currentPlayback.totalBlocks}`;
+    return "Play";
   }
 
   return "Read";
@@ -560,6 +600,14 @@ function renderOverlayState() {
 
   overlayRoot.classList.toggle("fvr-open", overlayPinnedOpen);
   overlayPlayButton.textContent = getOverlayLabel();
+  overlayPlayButton.disabled = currentPlayback.status === "playing";
+  overlayPauseButton.disabled = currentPlayback.status !== "playing";
+  if (overlayInlinePlayButton) {
+    overlayInlinePlayButton.disabled = currentPlayback.status === "playing";
+  }
+  if (overlayInlinePauseButton) {
+    overlayInlinePauseButton.disabled = currentPlayback.status !== "playing";
+  }
   overlayExpandButton.textContent = overlayPinnedOpen ? "Close" : "Set";
   overlayExpandButton.title = overlayPinnedOpen ? "Collapse settings" : "Open full settings";
   overlayBackButton.disabled =
@@ -570,8 +618,11 @@ function renderOverlayState() {
     currentPlayback.blockIndex >= currentPlayback.totalBlocks;
   overlayStopButton.disabled = currentPlayback.status === "idle";
   overlayStatus.textContent =
-    currentPlayback.voiceLabel ||
-    (currentPlayback.status === "idle" ? "Ready" : "Reading");
+    currentPlayback.status === "idle"
+      ? "Ready"
+      : currentPlayback.status === "paused"
+        ? `Paused at P${currentPlayback.blockIndex}/${currentPlayback.totalBlocks}`
+        : `Reading P${currentPlayback.blockIndex}/${currentPlayback.totalBlocks}`;
 }
 
 function injectOverlay() {
@@ -592,7 +643,7 @@ function injectOverlay() {
         color: #2a221c;
       }
       #free-voice-reader-overlay .fvr-shell {
-        width: 92px;
+        width: 132px;
         min-height: 42px;
         border-radius: 16px;
         background: rgba(255, 249, 241, 0.96);
@@ -603,7 +654,7 @@ function injectOverlay() {
       }
       #free-voice-reader-overlay:hover .fvr-shell,
       #free-voice-reader-overlay.fvr-open .fvr-shell {
-        width: 272px;
+        width: 316px;
       }
       #free-voice-reader-overlay .fvr-main {
         display: block;
@@ -617,7 +668,7 @@ function injectOverlay() {
       }
       #free-voice-reader-overlay .fvr-topbar {
         display: grid;
-        grid-template-columns: 42px 50px;
+        grid-template-columns: 42px 42px 48px;
         align-items: center;
       }
       #free-voice-reader-overlay .fvr-play {
@@ -625,6 +676,14 @@ function injectOverlay() {
         height: 42px;
         background: #a64926;
         color: white;
+        font-size: 11px;
+        font-weight: 700;
+      }
+      #free-voice-reader-overlay .fvr-pause {
+        width: 42px;
+        height: 42px;
+        background: rgba(166, 73, 38, 0.12);
+        color: #7c3316;
         font-size: 11px;
         font-weight: 700;
       }
@@ -639,6 +698,9 @@ function injectOverlay() {
         gap: 6px;
         padding: 6px 10px;
         border-top: 1px solid rgba(98, 67, 48, 0.12);
+      }
+      #free-voice-reader-overlay:not(.fvr-open):hover .fvr-panel {
+        display: grid;
       }
       #free-voice-reader-overlay:not(.fvr-open) .fvr-panel {
         display: none;
@@ -659,20 +721,16 @@ function injectOverlay() {
         color: rgba(42, 34, 28, 0.74);
       }
       #free-voice-reader-overlay .fvr-actions {
-        display: flex;
-        align-items: center;
+        display: grid;
+        grid-template-columns: repeat(5, minmax(0, 1fr));
         gap: 4px;
-        justify-content: flex-end;
       }
       #free-voice-reader-overlay .fvr-status {
         font-size: 11px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        max-width: 78px;
+        min-height: 16px;
       }
       #free-voice-reader-overlay .fvr-icon {
-        min-width: 34px;
+        min-width: 0;
         height: 28px;
         border-radius: 999px;
         font-size: 11px;
@@ -714,6 +772,7 @@ function injectOverlay() {
       <div class="fvr-main">
         <div class="fvr-topbar">
           <button class="fvr-play" type="button">Read</button>
+          <button class="fvr-pause" type="button" title="Pause">Pause</button>
           <button class="fvr-expand-main" type="button" title="Open full settings">Set</button>
         </div>
         <div class="fvr-panel">
@@ -728,6 +787,8 @@ function injectOverlay() {
           </div>
           <div class="fvr-actions">
             <button class="fvr-icon fvr-back" type="button" title="Previous paragraph"><<</button>
+            <button class="fvr-icon fvr-play-inline" type="button" title="Play or resume">Play</button>
+            <button class="fvr-icon fvr-pause-inline" type="button" title="Pause">Pause</button>
             <button class="fvr-icon fvr-next" type="button" title="Next paragraph">>></button>
             <button class="fvr-icon fvr-stop" type="button" title="Stop">[]</button>
           </div>
@@ -739,12 +800,15 @@ function injectOverlay() {
   document.body.appendChild(overlayRoot);
   overlayStatus = overlayRoot.querySelector(".fvr-status");
   overlayPlayButton = overlayRoot.querySelector(".fvr-play");
+  overlayPauseButton = overlayRoot.querySelector(".fvr-pause");
   overlayExpandButton = overlayRoot.querySelector(".fvr-expand-main");
   overlayBackButton = overlayRoot.querySelector(".fvr-back");
   overlayNextButton = overlayRoot.querySelector(".fvr-next");
   overlayStopButton = overlayRoot.querySelector(".fvr-stop");
   overlayVoiceSelect = overlayRoot.querySelector(".fvr-voice");
   overlaySpeedSelect = overlayRoot.querySelector(".fvr-speed");
+  overlayInlinePlayButton = overlayRoot.querySelector(".fvr-play-inline");
+  overlayInlinePauseButton = overlayRoot.querySelector(".fvr-pause-inline");
 
   overlayRoot.addEventListener("mouseenter", () => {
     if (!overlayPinnedOpen) {
@@ -758,7 +822,12 @@ function injectOverlay() {
     }
   });
 
-  overlayPlayButton.addEventListener("click", async () => {
+  const handlePlay = async () => {
+    if (currentPlayback.status === "paused") {
+      resumeSpeech();
+      return;
+    }
+
     const settings = await getStoredSettings();
     const selection = getSelectedText();
     if (selection) {
@@ -768,7 +837,17 @@ function injectOverlay() {
 
     const main = await resolveMainContentResult();
     beginReading(main, settings, "main");
-  });
+  };
+
+  overlayPlayButton.addEventListener("click", handlePlay);
+  overlayInlinePlayButton.addEventListener("click", handlePlay);
+
+  const handlePause = () => {
+    pauseSpeech();
+  };
+
+  overlayPauseButton.addEventListener("click", handlePause);
+  overlayInlinePauseButton.addEventListener("click", handlePause);
 
   overlayBackButton.addEventListener("click", () => {
     skipBackward();
@@ -839,6 +918,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "STOP_READING") {
       stopSpeech();
       sendResponse({ ok: true, message: "Reading stopped." });
+      return;
+    }
+
+    if (message.type === "PAUSE_READING") {
+      sendResponse(pauseSpeech());
+      return;
+    }
+
+    if (message.type === "RESUME_READING") {
+      sendResponse(resumeSpeech());
       return;
     }
 

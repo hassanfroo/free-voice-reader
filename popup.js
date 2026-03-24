@@ -2,7 +2,7 @@ const STORAGE_KEY = "freeVoiceReaderSettings";
 
 const DEFAULT_SETTINGS = {
   voiceName: "auto",
-  rate: 1,
+  rate: 1.5,
   pitch: 1,
   volume: 1
 };
@@ -148,8 +148,8 @@ function formatPlaybackStatus(playback) {
     return "";
   }
 
-  if (playback.status === "countdown") {
-    return `Starting at ${Number(rateInput.value).toFixed(2)}x.`;
+  if (playback.status === "paused") {
+    return `Paused on paragraph ${playback.blockIndex} of ${playback.totalBlocks}.`;
   }
 
   const sourceLabel = playback.source === "selection" ? "selection" : "page";
