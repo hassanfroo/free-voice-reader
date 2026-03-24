@@ -2,6 +2,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   chooseVoiceForLanguage,
+  chooseDominantLanguage,
   detectLanguage
 } = require("../voice-core.js");
 
@@ -21,4 +22,17 @@ test("prefers the declared page language when matching voices exist", () => {
 test("falls back to script detection when page language is missing", () => {
   assert.equal(detectLanguage("", "Привет мир и добро пожаловать"), "ru");
   assert.equal(detectLanguage("", "こんにちは世界"), "ja");
+});
+
+test("chooses the dominant weighted language from page hints", () => {
+  const language = chooseDominantLanguage(
+    [
+      { lang: "en-US", weight: 100 },
+      { lang: "de-DE", weight: 420 },
+      { lang: "en-US", weight: 40 }
+    ],
+    "Das ist ein deutscher Artikel."
+  );
+
+  assert.equal(language, "de");
 });

@@ -27,6 +27,7 @@ let overlayBackButton = null;
 let overlayNextButton = null;
 let overlayStopButton = null;
 let overlayExpandButton = null;
+let overlayVoiceSelect = null;
 let activeHighlightedElement = null;
 let overlayPinnedOpen = false;
 
@@ -39,6 +40,7 @@ const DEFAULT_SETTINGS = {
 
 function loadVoices() {
   availableVoices = speechSynthesis.getVoices();
+  renderOverlayVoices();
 
   if (availableVoices.length && queuedSpeakRequest) {
     const pending = queuedSpeakRequest;
@@ -82,7 +84,8 @@ function buildSelectionResult(text) {
   return {
     text,
     blocks: text ? [text] : [],
-    confidence: text ? "high" : "low"
+    confidence: text ? "high" : "low",
+    langHints: []
   };
 }
 
@@ -141,6 +144,7 @@ function stopSpeech() {
     voiceLabel: ""
   };
   clearReadingMarker();
+  syncOverlayVoiceSelection();
   renderOverlayState();
 }
 
@@ -151,7 +155,7 @@ function getSelectedVoice(settings, sourceMeta) {
 
   return FreeVoiceReaderVoice.chooseVoiceForLanguage(
     availableVoices,
-    sourceMeta?.lang || document.documentElement.lang,
+    sourceMeta?.langHints?.length ? sourceMeta.langHints : sourceMeta?.lang || document.documentElement.lang,
     sourceMeta?.text || ""
   );
 }
@@ -207,6 +211,47 @@ function findElementForBlockText(blockText) {
   );
 }
 
+function getElementLanguageHint(element) {
+  if (!element) {
+    return "";
+  }
+
+  const langElement = element.closest("[lang]");
+  return (
+    langElement?.getAttribute("lang") ||
+    element.getAttribute("lang") ||
+    ""
+  );
+}
+
+function collectLanguageHintsForBlocks(blocks) {
+  const hints = [];
+
+  (blocks || []).forEach((blockText) => {
+    const element = findElementForBlockText(blockText);
+    const hintedLang = getElementLanguageHint(element);
+    if (hintedLang) {
+      hints.push({
+        lang: hintedLang,
+        weight: Math.max(40, normalizeWhitespace(blockText).length)
+      });
+    }
+  });
+
+  const metaLang = document
+    .querySelector("meta[http-equiv='content-language']")
+    ?.getAttribute("content");
+  if (metaLang) {
+    hints.push({ lang: metaLang, weight: 120 });
+  }
+
+  if (document.documentElement.lang) {
+    hints.push({ lang: document.documentElement.lang, weight: 100 });
+  }
+
+  return hints;
+}
+
 function focusCurrentBlock(blockIndex) {
   clearReadingMarker();
   const blockText = activeSourceMeta?.blocks?.[blockIndex];
@@ -225,6 +270,57 @@ function focusCurrentBlock(blockIndex) {
     behavior: "smooth",
     block: "center"
   });
+}
+
+function saveOverlayVoiceSetting(value) {
+  return getStoredSettings().then(
+    (settings) =>
+      new Promise((resolve) => {
+        chrome.storage.sync.set(
+          {
+            [STORAGE_KEY]: {
+              ...settings,
+              voiceName: value
+            }
+          },
+          resolve
+        );
+      })
+  );
+}
+
+function syncOverlayVoiceSelection() {
+  if (!overlayVoiceSelect) {
+    return;
+  }
+
+  getStoredSettings().then((settings) => {
+    if (!overlayVoiceSelect) {
+      return;
+    }
+    overlayVoiceSelect.value = settings.voiceName || "auto";
+  });
+}
+
+function renderOverlayVoices() {
+  if (!overlayVoiceSelect) {
+    return;
+  }
+
+  overlayVoiceSelect.innerHTML = "";
+  const autoOption = document.createElement("option");
+  autoOption.value = "auto";
+  autoOption.textContent = "Auto voice";
+  overlayVoiceSelect.appendChild(autoOption);
+
+  availableVoices.forEach((voice) => {
+    const option = document.createElement("option");
+    option.value = voice.name;
+    option.textContent = `${voice.name} (${voice.lang})`;
+    overlayVoiceSelect.appendChild(option);
+  });
+
+  syncOverlayVoiceSelection();
 }
 
 function speakCurrentQueueItem() {
@@ -346,6 +442,9 @@ function beginReading(result, settings, source) {
     text: result.text,
     blocks: result.blocks?.length ? result.blocks : [result.text],
     lang: result.lang || document.documentElement.lang || "",
+    langHints: result.langHints?.length
+      ? result.langHints
+      : collectLanguageHintsForBlocks(result.blocks?.length ? result.blocks : [result.text]),
     source
   };
   activeQueue = FreeVoiceReaderSpeech.buildSpeechQueueFromBlocks(
@@ -533,16 +632,16 @@ function injectOverlay() {
         font-weight: 700;
       }
       #free-voice-reader-overlay .fvr-panel {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 8px;
-        padding: 0 10px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 6px;
+        padding: 6px 10px;
       }
       #free-voice-reader-overlay .fvr-actions {
         display: flex;
         align-items: center;
         gap: 4px;
+        justify-content: flex-end;
       }
       #free-voice-reader-overlay .fvr-status {
         font-size: 11px;
@@ -563,6 +662,15 @@ function injectOverlay() {
         opacity: 0.45;
         cursor: default;
       }
+      #free-voice-reader-overlay .fvr-voice {
+        width: 100%;
+        border: 1px solid rgba(98, 67, 48, 0.2);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.9);
+        padding: 4px 6px;
+        font-size: 11px;
+        color: #2a221c;
+      }
       .fvr-reading-target {
         outline: 3px solid rgba(166, 73, 38, 0.9) !important;
         background: rgba(255, 229, 214, 0.72) !important;
@@ -576,6 +684,7 @@ function injectOverlay() {
         <button class="fvr-play" type="button">Read</button>
         <div class="fvr-panel">
           <span class="fvr-status">Ready</span>
+          <select class="fvr-voice" title="Choose voice"></select>
           <div class="fvr-actions">
             <button class="fvr-icon fvr-expand" type="button" title="Open full panel">+</button>
             <button class="fvr-icon fvr-back" type="button" title="Previous paragraph"><<</button>
@@ -594,6 +703,7 @@ function injectOverlay() {
   overlayBackButton = overlayRoot.querySelector(".fvr-back");
   overlayNextButton = overlayRoot.querySelector(".fvr-next");
   overlayStopButton = overlayRoot.querySelector(".fvr-stop");
+  overlayVoiceSelect = overlayRoot.querySelector(".fvr-voice");
 
   overlayRoot.addEventListener("mouseenter", () => {
     if (!overlayPinnedOpen) {
@@ -623,6 +733,11 @@ function injectOverlay() {
     skipBackward();
   });
 
+  overlayVoiceSelect.addEventListener("change", async () => {
+    await saveOverlayVoiceSetting(overlayVoiceSelect.value);
+    renderOverlayState();
+  });
+
   overlayExpandButton.addEventListener("click", () => {
     overlayPinnedOpen = !overlayPinnedOpen;
     renderOverlayState();
@@ -636,6 +751,7 @@ function injectOverlay() {
     stopSpeech();
   });
 
+  renderOverlayVoices();
   renderOverlayState();
 }
 
@@ -682,9 +798,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type === "PREVIEW_TEXT") {
       const selection = getSelectedText();
       const main = await resolveMainContentResult();
+      const langHints = collectLanguageHintsForBlocks(
+        main.blocks?.length ? main.blocks : [main.text]
+      );
       const autoVoice = FreeVoiceReaderVoice.chooseVoiceForLanguage(
         availableVoices,
-        main.lang || document.documentElement.lang,
+        langHints.length ? langHints : main.lang || document.documentElement.lang,
         main.text
       );
       sendResponse({
@@ -724,3 +843,4 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 injectOverlay();
+renderOverlayVoices();
