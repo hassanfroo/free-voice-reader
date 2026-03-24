@@ -22,6 +22,7 @@ let activeCountdownTimer = null;
 let activeUtteranceToken = 0;
 let activeChunkCharIndex = 0;
 let activeResumeCharIndex = 0;
+let activePauseMode = "none";
 let overlayRoot = null;
 let overlayStatus = null;
 let overlayPlayButton = null;
@@ -139,6 +140,7 @@ function stopSpeech() {
   activeSourceMeta = null;
   activeChunkCharIndex = 0;
   activeResumeCharIndex = 0;
+  activePauseMode = "none";
   queuedSpeakRequest = null;
   currentPlayback = {
     status: "idle",
@@ -161,11 +163,26 @@ function pauseSpeech() {
     return { ok: false, message: "Nothing is currently playing." };
   }
 
-  activeUtteranceToken += 1;
-  speechSynthesis.cancel();
-  activeChunkUtterance = null;
+  activePauseMode = "native";
+  speechSynthesis.pause();
   currentPlayback.status = "paused";
   renderOverlayState();
+
+  window.setTimeout(() => {
+    if (currentPlayback.status !== "paused" || activePauseMode !== "native") {
+      return;
+    }
+
+    if (speechSynthesis.paused) {
+      return;
+    }
+
+    activePauseMode = "manual";
+    activeUtteranceToken += 1;
+    speechSynthesis.cancel();
+    activeChunkUtterance = null;
+  }, 140);
+
   return {
     ok: true,
     message: `Paused at paragraph ${currentPlayback.blockIndex}.`
@@ -174,6 +191,31 @@ function pauseSpeech() {
 
 function resumeSpeech() {
   if (currentPlayback.status === "paused" && activeQueue.length && activeQueueIndex >= 0) {
+    if (activePauseMode === "native" && (speechSynthesis.paused || activeChunkUtterance)) {
+      speechSynthesis.resume();
+      currentPlayback.status = "playing";
+      renderOverlayState();
+
+      window.setTimeout(() => {
+        if (currentPlayback.status !== "playing" || activePauseMode !== "native") {
+          return;
+        }
+
+        if (speechSynthesis.speaking) {
+          return;
+        }
+
+        activePauseMode = "manual";
+        speakCurrentQueueItem(activeChunkCharIndex);
+      }, 220);
+
+      return {
+        ok: true,
+        message: `Resumed at paragraph ${currentPlayback.blockIndex}.`
+      };
+    }
+
+    activePauseMode = "manual";
     currentPlayback.status = "starting";
     renderOverlayState();
     speakCurrentQueueItem(activeChunkCharIndex);
@@ -394,6 +436,7 @@ function finishPlayback() {
   activeQueueIndex = -1;
   activeChunkCharIndex = 0;
   activeResumeCharIndex = 0;
+  activePauseMode = "none";
   clearReadingMarker();
   renderOverlayState();
 }
@@ -433,6 +476,7 @@ function speakCurrentQueueItem(startCharIndex = 0) {
   activeChunkUtterance = utterance;
   activeResumeCharIndex = speakOffset;
   activeChunkCharIndex = speakOffset;
+  activePauseMode = "none";
   currentPlayback.status = "playing";
   updatePlaybackFromQueueItem(item);
   renderOverlayState();
