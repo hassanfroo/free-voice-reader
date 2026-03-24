@@ -7,11 +7,11 @@ Free Voice Reader is a Chrome extension that reads either selected text or the m
 - Reads highlighted text on the current page
 - Reads the main article or content area while skipping common navigation and sidebar elements
 - Chooses a voice automatically based on the page language, with manual override available
-- Lets users set reading speed all the way up to 3x
+- Lets users set reading speed up to 2x
 - Adds a floating in-page control bubble in the top-right corner for quick access
 - Includes a full-panel toggle on the floating bubble so it can stay expanded
 - Lets you change voice and speed directly inside the expanded floating panel
-- Uses a clearly labeled `Set` button in the floating panel to open the full mini-settings view
+- Shows a visible `Set` button even in the collapsed floating widget to open the full mini-settings view
 - Supports jumping to the next paragraph or headline while listening
 - Supports jumping back to the previous paragraph or headline while listening
 - Auto-scrolls to the current paragraph and highlights where reading is happening

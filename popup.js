@@ -149,7 +149,7 @@ function formatPlaybackStatus(playback) {
   }
 
   if (playback.status === "countdown") {
-    return `Starting in ${playback.countdownRemaining} seconds at ${Number(rateInput.value).toFixed(2)}x.`;
+    return `Starting at ${Number(rateInput.value).toFixed(2)}x.`;
   }
 
   const sourceLabel = playback.source === "selection" ? "selection" : "page";

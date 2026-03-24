@@ -27,5 +27,4 @@ test("maps rate values to friendly labels", () => {
   assert.equal(getSpeedLabel(1), "Comfort");
   assert.equal(getSpeedLabel(1.3), "Fast");
   assert.equal(getSpeedLabel(2), "Very Fast");
-  assert.equal(getSpeedLabel(3), "Lightning");
 });

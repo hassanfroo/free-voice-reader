@@ -331,7 +331,7 @@ function renderOverlaySpeeds() {
   }
 
   overlaySpeedSelect.innerHTML = "";
-  [0.85, 1, 1.25, 1.5, 2, 2.5, 3].forEach((rate) => {
+  [0.85, 1, 1.25, 1.5, 2].forEach((rate) => {
     const option = document.createElement("option");
     option.value = String(rate);
     option.textContent = `${rate.toFixed(rate % 1 === 0 ? 0 : 2)}x`;
@@ -406,38 +406,14 @@ function startQueuePlayback(settings, source) {
     ? `${chosenVoice.name} (${chosenVoice.lang})`
     : "Browser default";
 
-  if (Number(settings.rate) > 2) {
-    currentPlayback.status = "countdown";
-    currentPlayback.countdownRemaining = 3;
-    renderOverlayState();
-
-    activeCountdownTimer = window.setInterval(() => {
-      currentPlayback.countdownRemaining -= 1;
-
-      if (currentPlayback.countdownRemaining <= 0) {
-        window.clearInterval(activeCountdownTimer);
-        activeCountdownTimer = null;
-        currentPlayback.countdownRemaining = 0;
-        currentPlayback.status = "starting";
-        renderOverlayState();
-        speakCurrentQueueItem();
-        return;
-      }
-
-      renderOverlayState();
-    }, 1000);
-  } else {
-    currentPlayback.status = "starting";
-    renderOverlayState();
-    speakCurrentQueueItem();
-  }
+  currentPlayback.status = "starting";
+  renderOverlayState();
+  speakCurrentQueueItem();
 
   const label = source === "selection" ? "selection" : "page";
-  const countdownMessage =
-    Number(settings.rate) > 2 ? " Starting in 3..." : "";
   return {
     ok: true,
-    message: `Reading ${label} (${currentPlayback.totalBlocks} blocks, ${currentPlayback.totalChunks} segment${currentPlayback.totalChunks === 1 ? "" : "s"}).${countdownMessage}`
+    message: `Reading ${label} (${currentPlayback.totalBlocks} blocks, ${currentPlayback.totalChunks} segment${currentPlayback.totalChunks === 1 ? "" : "s"}).`
   };
 }
 
@@ -616,7 +592,7 @@ function injectOverlay() {
         color: #2a221c;
       }
       #free-voice-reader-overlay .fvr-shell {
-        width: 42px;
+        width: 92px;
         min-height: 42px;
         border-radius: 16px;
         background: rgba(255, 249, 241, 0.96);
@@ -630,9 +606,7 @@ function injectOverlay() {
         width: 272px;
       }
       #free-voice-reader-overlay .fvr-main {
-        display: grid;
-        grid-template-columns: 42px 1fr;
-        align-items: center;
+        display: block;
       }
       #free-voice-reader-overlay button {
         border: 0;
@@ -640,6 +614,11 @@ function injectOverlay() {
         color: inherit;
         cursor: pointer;
         padding: 0;
+      }
+      #free-voice-reader-overlay .fvr-topbar {
+        display: grid;
+        grid-template-columns: 42px 50px;
+        align-items: center;
       }
       #free-voice-reader-overlay .fvr-play {
         width: 42px;
@@ -649,11 +628,20 @@ function injectOverlay() {
         font-size: 11px;
         font-weight: 700;
       }
+      #free-voice-reader-overlay .fvr-expand-main {
+        height: 42px;
+        font-size: 11px;
+        font-weight: 700;
+      }
       #free-voice-reader-overlay .fvr-panel {
         display: grid;
         grid-template-columns: 1fr;
         gap: 6px;
         padding: 6px 10px;
+        border-top: 1px solid rgba(98, 67, 48, 0.12);
+      }
+      #free-voice-reader-overlay:not(.fvr-open) .fvr-panel {
+        display: none;
       }
       #free-voice-reader-overlay .fvr-settings {
         display: grid;
@@ -724,7 +712,10 @@ function injectOverlay() {
     </style>
     <div class="fvr-shell">
       <div class="fvr-main">
-        <button class="fvr-play" type="button">Read</button>
+        <div class="fvr-topbar">
+          <button class="fvr-play" type="button">Read</button>
+          <button class="fvr-expand-main" type="button" title="Open full settings">Set</button>
+        </div>
         <div class="fvr-panel">
           <span class="fvr-status">Ready</span>
           <div class="fvr-settings-labels">
@@ -736,7 +727,6 @@ function injectOverlay() {
             <select class="fvr-speed" title="Choose speed"></select>
           </div>
           <div class="fvr-actions">
-            <button class="fvr-icon fvr-expand" type="button" title="Open full settings">Set</button>
             <button class="fvr-icon fvr-back" type="button" title="Previous paragraph"><<</button>
             <button class="fvr-icon fvr-next" type="button" title="Next paragraph">>></button>
             <button class="fvr-icon fvr-stop" type="button" title="Stop">[]</button>
@@ -749,7 +739,7 @@ function injectOverlay() {
   document.body.appendChild(overlayRoot);
   overlayStatus = overlayRoot.querySelector(".fvr-status");
   overlayPlayButton = overlayRoot.querySelector(".fvr-play");
-  overlayExpandButton = overlayRoot.querySelector(".fvr-expand");
+  overlayExpandButton = overlayRoot.querySelector(".fvr-expand-main");
   overlayBackButton = overlayRoot.querySelector(".fvr-back");
   overlayNextButton = overlayRoot.querySelector(".fvr-next");
   overlayStopButton = overlayRoot.querySelector(".fvr-stop");
